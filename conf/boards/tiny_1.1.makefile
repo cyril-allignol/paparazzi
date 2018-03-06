@@ -1,7 +1,7 @@
 #
 # tiny_1.1.makefile
 #
-# http://paparazzi.enac.fr/wiki/Tiny_v1.1
+# http://wiki.paparazziuav.org/wiki/Tiny_v1.1
 #
 ARCH=lpc21
 
@@ -26,6 +26,9 @@ BARO_LED          ?= none
 AHRS_ALIGNER_LED  ?= none
 GPS_LED           ?= none
 SYS_TIME_LED      ?= none
+
+TUNNEL_RX_LED     ?= 1
+TUNNEL_TX_LED     ?= 2
 
 
 #

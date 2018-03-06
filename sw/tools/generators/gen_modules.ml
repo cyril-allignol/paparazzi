@@ -80,7 +80,7 @@ let get_cap_name = fun f ->
   match name with
     | [Str.Text t]
     | [Str.Text t; Str.Delim "("; Str.Delim ")"]
-    | [Str.Text t; Str.Delim "("; Str.Text _ ; Str.Delim ")"] -> String.uppercase t
+    | [Str.Text t; Str.Delim "("; Str.Text _ ; Str.Delim ")"] -> Compat.uppercase_ascii t
     | _ -> failwith "Gen_modules: not a valid function name"
 
 let print_function_freq = fun modules ->
@@ -116,8 +116,19 @@ let print_status = fun modules ->
       (Xml.children m))
     modules
 
-let print_init_functions = fun modules ->
-  lprintf out_h "\nstatic inline void modules_init(void) {\n";
+let modules_of_task = fun modules ->
+  let h = Hashtbl.create 1 in
+  List.iter (fun m ->
+    let task = ExtXml.attrib_or_default m "task" "default" in
+    if Hashtbl.mem h task then
+      Hashtbl.replace h task (List.append [m] (Hashtbl.find h task))
+    else
+      Hashtbl.add h task [m]
+  ) modules;
+  h
+
+let print_init = fun task modules ->
+  lprintf out_h "\nstatic inline void modules_%s_init(void) {\n" task;
   right ();
   List.iter (fun m ->
     let module_name = ExtXml.attrib m "name" in
@@ -136,13 +147,23 @@ let print_init_functions = fun modules ->
   left ();
   lprintf out_h "}\n"
 
-let print_periodic_functions = fun modules ->
+let print_init_functions = fun modules ->
+  let h = modules_of_task modules in
+  Hashtbl.iter print_init h;
+  lprintf out_h "\nstatic inline void modules_init(void) {\n";
+  right ();
+  Hashtbl.iter (fun t _ -> lprintf out_h "modules_%s_init();\n" t) h;
+  left ();
+  lprintf out_h "}\n"
+
+
+let print_periodic = fun task modules ->
   let min_period = 1. /. float !freq
   and max_period = 65536. /. float !freq
   and min_freq   = float !freq /. 65536.
   and max_freq   = float !freq in
 
-  lprintf out_h "\nstatic inline void modules_periodic_task(void) {\n";
+  lprintf out_h "\nstatic inline void modules_%s_periodic_task(void) {\n" task;
   right ();
   (** Computes the required modulos *)
   let functions_modulo = List.flatten (List.map (fun m ->
@@ -175,10 +196,18 @@ let print_periodic_functions = fun modules ->
       end
       else begin
         let status = get_status_name f module_name in
-        let start = (ExtXml.attrib_or_default f "start" "") in
-        lprintf out_h "if (%s == MODULES_START) { %s; %s = MODULES_RUN; }\n" status start status;
-        let stop = (ExtXml.attrib_or_default f "stop" "") in
-        lprintf out_h "if (%s == MODULES_STOP) { %s; %s = MODULES_IDLE; }\n" status stop status;
+        lprintf out_h "if (%s == MODULES_START) {\n" status;
+        right ();
+        ignore(try lprintf out_h "%s;\n" (Xml.attrib f "start") with _ -> ());
+        lprintf out_h "%s = MODULES_RUN;\n" status;
+        left ();
+        lprintf out_h "}\n";
+        lprintf out_h "if (%s == MODULES_STOP) {\n" status;
+        right ();
+        ignore(try lprintf out_h "%s;\n" (Xml.attrib f "stop") with _ -> ());
+        lprintf out_h "%s = MODULES_IDLE;\n" status;
+        left ();
+        lprintf out_h "}\n";
       end
     )
       periodic)
@@ -239,8 +268,18 @@ let print_periodic_functions = fun modules ->
   left ();
   lprintf out_h "}\n"
 
-let print_event_functions = fun modules ->
-  lprintf out_h "\nstatic inline void modules_event_task(void) {\n";
+let print_periodic_functions = fun modules ->
+  let h = modules_of_task modules in
+  Hashtbl.iter print_periodic h;
+  lprintf out_h "\nstatic inline void modules_periodic_task(void) {\n";
+  right ();
+  Hashtbl.iter (fun t _ -> lprintf out_h "modules_%s_periodic_task();\n" t) h;
+  left ();
+  lprintf out_h "}\n"
+
+
+let print_event = fun task modules ->
+  lprintf out_h "\nstatic inline void modules_%s_event_task(void) {\n" task;
   right ();
   List.iter (fun m ->
     List.iter (fun i ->
@@ -252,10 +291,23 @@ let print_event_functions = fun modules ->
   left ();
   lprintf out_h "}\n"
 
+let print_event_functions = fun modules ->
+  let h = modules_of_task modules in
+  Hashtbl.iter print_event h;
+  lprintf out_h "\nstatic inline void modules_event_task(void) {\n";
+  right ();
+  Hashtbl.iter (fun t _ -> lprintf out_h "modules_%s_event_task();\n" t) h;
+  left ();
+  lprintf out_h "}\n"
+
+
 let print_datalink_functions = fun modules ->
-  lprintf out_h "\n#include \"messages.h\"\n";
+  lprintf out_h "\n#include \"pprzlink/messages.h\"\n";
   lprintf out_h "#include \"generated/airframe.h\"\n";
-  lprintf out_h "static inline void modules_parse_datalink(uint8_t msg_id __attribute__ ((unused))) {\n";
+  lprintf out_h "static inline void modules_parse_datalink(uint8_t msg_id __attribute__ ((unused)),
+                                          struct link_device *dev __attribute__((unused)),
+                                          struct transport_tx *trans __attribute__((unused)),
+                                          uint8_t *buf __attribute__((unused))) {\n";
   right ();
   let else_ = ref "" in
   List.iter (fun m ->
@@ -275,12 +327,9 @@ let parse_modules modules =
   print_function_freq modules;
   print_status modules;
   nl ();
-  fprintf out_h "#ifdef MODULES_C\n";
   print_init_functions modules;
   print_periodic_functions modules;
   print_event_functions modules;
-  nl ();
-  fprintf out_h "#endif // MODULES_C\n";
   nl ();
   fprintf out_h "#ifdef MODULES_DATALINK_C\n";
   print_datalink_functions modules;
@@ -290,33 +339,60 @@ let parse_modules modules =
 let test_section_modules = fun xml ->
   List.fold_right (fun x r -> ExtXml.tag_is x "modules" || r) (Xml.children xml) false
 
-(** Check dependencies *)
-let pipe_regexp = Str.regexp "|"
-let dep_of_field = fun field att ->
+(** create list of dependencies from string
+ * returns a nested list, where the second level consists of OR dependencies
+ *)
+let deps_of_string = fun s ->
+  let comma_regexp = Str.regexp "," in
+  let pipe_regexp = Str.regexp "|" in
   try
-    Str.split pipe_regexp (Xml.attrib field att)
+    (* first get the comma separated deps *)
+    let deps = Str.split comma_regexp s in
+    (* split up each dependency in a list of OR deps (separated by |) *)
+    List.map (fun dep ->
+      Str.split pipe_regexp dep)
+      deps;
   with
-      _ -> []
+      _ -> [[]]
 
+let get_pcdata = fun xml tag ->
+  try
+    Xml.pcdata (ExtXml.child (ExtXml.child xml tag) "0")
+  with
+      Not_found -> ""
+
+(** Check dependencies *)
 let check_dependencies = fun modules names ->
   List.iter (fun m ->
     try
-      let dep = ExtXml.child m "depend" in
-      let require = dep_of_field dep "require" in
-      List.iter (fun req ->
-        if not (List.exists (fun c -> String.compare c req == 0) names) then
-          fprintf stderr "\nWARNING: Dependency not satisfied: module %s requires %s\n" (Xml.attrib m "name") req)
+      let module_name = Xml.attrib m "name" in
+      let dep_string = get_pcdata m "depends" in
+      (*fprintf stderr "\n\nWARNING: parsing dep string: %s\n\n" dep_string;
+      fprintf stderr "\n\nWARNING: names: %s" (String.concat "," names);*)
+      let require = deps_of_string dep_string in
+      List.iter (fun deps ->
+        (* iterate over all dependencies, where the second level contains the OR dependencies *)
+        let find_common satisfied d = if List.mem d names then d::satisfied else satisfied in
+        let satisfied = List.fold_left find_common [] deps in
+        if List.length satisfied == 0 then
+          begin
+            fprintf stderr "\nDEPENDENCY Error: Module %s requires %s\n" module_name (String.concat " or " deps);
+            fprintf stderr "Available loaded modules are:\n    %s\n\n" (String.concat "\n    " names);
+            exit 1
+          end)
         require;
-      let conflict = dep_of_field dep "conflict" in
+      let conflict_string = get_pcdata m "conflicts" in
+      let conflict_l = List.flatten (deps_of_string conflict_string) in
       List.iter (fun con ->
         if List.exists (fun c -> String.compare c con == 0) names then
-          fprintf stderr "\nWARNING: Dependency not satisfied: module %s conflicts with %s\n" (Xml.attrib m "name") con)
-        conflict
+          fprintf stderr "\nDEPENDENCY WARNING: Module %s conflicts with %s\n" module_name con)
+        conflict_l
     with _ -> ()
   ) modules
 
 let write_settings = fun xml_file out_set modules ->
-  fprintf out_set "<!-- This file has been generated from %s -->\n" xml_file;
+  fprintf out_set "<!-- This file has been generated by gen_modules from %s -->\n" xml_file;
+  fprintf out_set "<!-- Version %s -->\n" (Env.get_paparazzi_version ());
   fprintf out_set "<!-- Please DO NOT EDIT -->\n\n";
   fprintf out_set "<settings>\n";
   fprintf out_set " <dl_settings>\n";
@@ -344,11 +420,13 @@ let write_settings = fun xml_file out_set modules ->
 let h_name = "MODULES_H"
 
 let () =
-  if Array.length Sys.argv <> 4 then
-    failwith (Printf.sprintf "Usage: %s out_settings_file default_freq xml_file" Sys.argv.(0));
-  let xml_file = Sys.argv.(3)
-  and default_freq = int_of_string(Sys.argv.(2))
-  and out_set = open_out Sys.argv.(1) in
+  if Array.length Sys.argv <> 6 then
+    failwith (Printf.sprintf "Usage: %s ac_id out_settings_file default_freq fp_file xml_file" Sys.argv.(0));
+  let xml_file = Sys.argv.(5)
+  and fp_file = Sys.argv.(4)
+  and default_freq = int_of_string(Sys.argv.(3))
+  and out_set = open_out Sys.argv.(2)
+  and ac_id = Sys.argv.(1) in
   try
     let xml = start_and_begin xml_file h_name in
     fprintf out_h "#define MODULES_IDLE  0\n";
@@ -369,12 +447,17 @@ let () =
     fprintf out_h "#endif";
     nl ();
     (* Extract modules list *)
-    let modules = GC.get_modules_of_airframe xml in
-    let modules = GC.unload_unused_modules modules true in
+    let modules =
+      try
+        let target = Sys.getenv "TARGET" in
+        GC.get_modules_of_config ~target ac_id xml (ExtXml.parse_file fp_file)
+      with
+      | Not_found -> failwith "TARTGET env needs to be specified to generate modules files"
+    in
     (* Extract modules names (file name and module name) *)
     let modules_name =
       (List.map (fun m -> try Xml.attrib m.GC.xml "name" with _ -> "") modules) @
-        (List.map (fun m -> m.GC.file) modules) in
+      (List.map (fun m -> m.GC.filename) modules) in
     (* Extract xml modules nodes *)
     let modules_list = List.map (fun m -> m.GC.xml) modules in
     check_dependencies modules_list modules_name;

@@ -44,19 +44,24 @@ struct VffExtended {
   float z_meas_baro; ///< last z measurement from baro in m
 
   float P[VFF_STATE_SIZE][VFF_STATE_SIZE];  ///< covariance matrix
+
+  float accel_noise;
+  float r_baro;
+  float r_alt;
+  float r_offset;
 };
 
 extern struct VffExtended vff;
 
 extern void vff_init_zero(void);
 extern void vff_init(float z, float zdot, float accel_bias, float baro_offset);
-extern void vff_propagate(float accel);
+extern void vff_propagate(float accel, float dt);
 extern void vff_update_baro(float z_meas);
 extern void vff_update_z(float z_meas);
 extern void vff_update_offset(float offset);
 extern void vff_update_baro_conf(float z_meas, float conf);
 extern void vff_update_z_conf(float z_meas, float conf);
-//extern void vff_update_vz_conf(float vz_meas, float conf);
+extern void vff_update_vz_conf(float vz_meas, float conf);
 extern void vff_realign(float z_meas);
 
 #endif /* VF_EXTENDED_FLOAT_H */

@@ -137,13 +137,13 @@ struct i2c_transaction {
  */
 struct i2c_periph {
   /* circular buffer holding transactions */
-  struct i2c_transaction* trans[I2C_TRANSACTION_QUEUE_LEN];
+  struct i2c_transaction *trans[I2C_TRANSACTION_QUEUE_LEN];
   uint8_t trans_insert_idx;
   uint8_t trans_extract_idx;
   /* internal state of the peripheral */
   volatile enum I2CStatus status;
   volatile uint8_t idx_buf;
-  void* reg_addr;
+  void *reg_addr;
   void *init_struct;
   struct i2c_errors *errors;
   volatile int16_t watchdog;
@@ -152,6 +152,7 @@ struct i2c_periph {
 /** I2C errors counter.
  */
 struct i2c_errors {
+  volatile uint16_t wd_reset_cnt;
   volatile uint16_t queue_full_cnt;
   volatile uint16_t ack_fail_cnt;
   volatile uint16_t miss_start_stop_cnt;
@@ -163,35 +164,26 @@ struct i2c_errors {
   volatile uint16_t unexpected_event_cnt;
   volatile uint32_t last_unexpected_event;
   volatile uint32_t er_irq_cnt;
-  volatile uint32_t irq_cnt;
-  volatile uint32_t event_chain[16];
-  volatile enum I2CStatus status_chain[16];
 };
 
 
-#include <string.h>
-#define I2C_ZERO_EVENTS(_err) {                     \
-    _err.irq_cnt = 0;                           \
-    memset((void*)_err.event_chain, 0, sizeof(_err.event_chain));   \
-    memset((void*)_err.status_chain, 0, sizeof(_err.status_chain)); \
-  }
-
-#define ZEROS_ERR_COUNTER(_i2c_err) {			\
-    _i2c_err.queue_full_cnt = 0;            \
-    _i2c_err.ack_fail_cnt = 0;				\
-    _i2c_err.miss_start_stop_cnt = 0;			\
-    _i2c_err.arb_lost_cnt = 0;				\
-    _i2c_err.over_under_cnt = 0;			\
-    _i2c_err.pec_recep_cnt = 0;				\
-    _i2c_err.timeout_tlow_cnt = 0;			\
-    _i2c_err.smbus_alert_cnt = 0;			\
-    _i2c_err.unexpected_event_cnt = 0;			\
-    _i2c_err.last_unexpected_event = 0;			\
-    _i2c_err.er_irq_cnt = 0;				\
+#define ZEROS_ERR_COUNTER(_i2c_err) {     \
+    _i2c_err.wd_reset_cnt = 0;            \
+    _i2c_err.queue_full_cnt = 0;          \
+    _i2c_err.ack_fail_cnt = 0;            \
+    _i2c_err.miss_start_stop_cnt = 0;     \
+    _i2c_err.arb_lost_cnt = 0;            \
+    _i2c_err.over_under_cnt = 0;          \
+    _i2c_err.pec_recep_cnt = 0;           \
+    _i2c_err.timeout_tlow_cnt = 0;        \
+    _i2c_err.smbus_alert_cnt = 0;         \
+    _i2c_err.unexpected_event_cnt = 0;    \
+    _i2c_err.last_unexpected_event = 0;   \
+    _i2c_err.er_irq_cnt = 0;              \
   }
 
 
-#ifdef USE_I2C0
+#if USE_I2C0
 
 extern struct i2c_periph i2c0;
 extern void i2c0_init(void);
@@ -199,7 +191,7 @@ extern void i2c0_init(void);
 #endif /* USE_I2C0 */
 
 
-#ifdef USE_I2C1
+#if USE_I2C1
 
 extern struct i2c_periph i2c1;
 extern void i2c1_init(void);
@@ -207,7 +199,7 @@ extern void i2c1_init(void);
 #endif /* USE_I2C1 */
 
 
-#ifdef USE_I2C2
+#if USE_I2C2
 
 extern struct i2c_periph i2c2;
 extern void i2c2_init(void);
@@ -215,7 +207,7 @@ extern void i2c2_init(void);
 #endif /* USE_I2C2 */
 
 
-#ifdef USE_I2C3
+#if USE_I2C3
 
 extern struct i2c_periph i2c3;
 extern void i2c3_init(void);
@@ -224,13 +216,13 @@ extern void i2c3_init(void);
 
 
 /** Initialize I2C peripheral */
-extern void   i2c_init(struct i2c_periph* p);
+extern void   i2c_init(struct i2c_periph *p);
 
 /** Check if I2C bus is idle.
  * @param p i2c peripheral to be used
  * @return TRUE if idle
  */
-extern bool_t i2c_idle(struct i2c_periph* p);
+extern bool i2c_idle(struct i2c_periph *p);
 
 /** Submit a I2C transaction.
  * Must be implemented by the underlying architecture
@@ -238,13 +230,13 @@ extern bool_t i2c_idle(struct i2c_periph* p);
  * @param t i2c transaction
  * @return TRUE if insertion to the transaction queue succeded
  */
-extern bool_t i2c_submit(struct i2c_periph* p, struct i2c_transaction* t);
+extern bool i2c_submit(struct i2c_periph *p, struct i2c_transaction *t);
 
 /** Set I2C bitrate.
  * @param p i2c peripheral to be used
  * @param bitrate bitrate
  */
-extern void   i2c_setbitrate(struct i2c_periph* p, int bitrate);
+extern void   i2c_setbitrate(struct i2c_periph *p, int bitrate);
 extern void   i2c_event(void);
 
 /*
@@ -263,7 +255,7 @@ extern void   i2c_event(void);
  * @param len number of bytes to transmit
  * @return TRUE if insertion to the transaction queue succeded
  */
-extern bool_t i2c_transmit(struct i2c_periph* p, struct i2c_transaction* t,
+extern bool i2c_transmit(struct i2c_periph *p, struct i2c_transaction *t,
                            uint8_t s_addr, uint8_t len);
 
 /** Submit a read only transaction.
@@ -275,7 +267,7 @@ extern bool_t i2c_transmit(struct i2c_periph* p, struct i2c_transaction* t,
  * @param len number of bytes to receive
  * @return TRUE if insertion to the transaction queue succeded
  */
-extern bool_t i2c_receive(struct i2c_periph* p, struct i2c_transaction* t,
+extern bool i2c_receive(struct i2c_periph *p, struct i2c_transaction *t,
                           uint8_t s_addr, uint16_t len);
 
 /** Submit a write/read transaction.
@@ -288,7 +280,7 @@ extern bool_t i2c_receive(struct i2c_periph* p, struct i2c_transaction* t,
  * @param len_r number of bytes to receive
  * @return TRUE if insertion to the transaction queue succeded
  */
-extern bool_t i2c_transceive(struct i2c_periph* p, struct i2c_transaction* t,
+extern bool i2c_transceive(struct i2c_periph *p, struct i2c_transaction *t,
                              uint8_t s_addr, uint8_t len_w, uint16_t len_r);
 
 /** @}*/

@@ -25,7 +25,7 @@
  */
 
 #include "subsystems/imu.h"
-
+#include "subsystems/abi.h"
 #include "mcu_periph/spi.h"
 #include "peripherals/hmc58xx_regs.h"
 
@@ -53,24 +53,13 @@ PRINT_CONFIG_MSG("Gyro/Accel output rate is 2kHz at 8kHz internal sampling")
 PRINT_CONFIG_VAR(PX4FMU_LOWPASS_FILTER)
 PRINT_CONFIG_VAR(PX4FMU_SMPLRT_DIV)
 
-#ifndef PX4FMU_GYRO_RANGE
-#define PX4FMU_GYRO_RANGE MPU60X0_GYRO_RANGE_2000
-#endif
 PRINT_CONFIG_VAR(PX4FMU_GYRO_RANGE)
-
-#ifndef PX4FMU_ACCEL_RANGE
-#define PX4FMU_ACCEL_RANGE MPU60X0_ACCEL_RANGE_16G
-#endif
 PRINT_CONFIG_VAR(PX4FMU_ACCEL_RANGE)
 
 struct ImuPx4fmu imu_px4fmu;
 
-void imu_impl_init(void)
+void imu_px4fmu_init(void)
 {
-  imu_px4fmu.accel_valid = FALSE;
-  imu_px4fmu.gyro_valid = FALSE;
-  imu_px4fmu.mag_valid = FALSE;
-
   /* MPU is on spi1 and CS is SLAVE2 */
   mpu60x0_spi_init(&imu_px4fmu.mpu, &spi1, SPI_SLAVE2);
   // change the default configuration
@@ -84,7 +73,7 @@ void imu_impl_init(void)
 }
 
 
-void imu_periodic(void)
+void imu_px4fmu_periodic(void)
 {
   mpu60x0_spi_periodic(&imu_px4fmu.mpu);
 
@@ -94,6 +83,8 @@ void imu_periodic(void)
 
 void imu_px4fmu_event(void)
 {
+  uint32_t now_ts = get_sys_time_usec();
+
   mpu60x0_spi_event(&imu_px4fmu.mpu);
   if (imu_px4fmu.mpu.data_available) {
     RATES_ASSIGN(imu.gyro_unscaled,
@@ -104,9 +95,11 @@ void imu_px4fmu_event(void)
                  imu_px4fmu.mpu.data_accel.vect.y,
                  imu_px4fmu.mpu.data_accel.vect.x,
                  -imu_px4fmu.mpu.data_accel.vect.z);
-    imu_px4fmu.mpu.data_available = FALSE;
-    imu_px4fmu.gyro_valid = TRUE;
-    imu_px4fmu.accel_valid = TRUE;
+    imu_px4fmu.mpu.data_available = false;
+    imu_scale_gyro(&imu);
+    imu_scale_accel(&imu);
+    AbiSendMsgIMU_GYRO_INT32(IMU_BOARD_ID, now_ts, &imu.gyro);
+    AbiSendMsgIMU_ACCEL_INT32(IMU_BOARD_ID, now_ts, &imu.accel);
   }
 
   /* HMC58XX event task */
@@ -115,8 +108,9 @@ void imu_px4fmu_event(void)
     imu.mag_unscaled.x =  imu_px4fmu.hmc.data.vect.y;
     imu.mag_unscaled.y =  imu_px4fmu.hmc.data.vect.x;
     imu.mag_unscaled.z = -imu_px4fmu.hmc.data.vect.z;
-    imu_px4fmu.hmc.data_available = FALSE;
-    imu_px4fmu.mag_valid = TRUE;
+    imu_px4fmu.hmc.data_available = false;
+    imu_scale_mag(&imu);
+    AbiSendMsgIMU_MAG_INT32(IMU_BOARD_ID, now_ts, &imu.mag);
   }
 }
 

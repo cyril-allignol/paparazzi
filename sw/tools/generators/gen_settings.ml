@@ -65,12 +65,22 @@ let print_dl_settings = fun settings ->
   lprintf "\n";
   StringSet.iter (fun m -> lprintf "#include \"%s.h\"\n" m) !modules;
   lprintf "#include \"generated/modules.h\"\n";
-  lprintf "#include \"generated/periodic_telemetry.h\"\n";
   lprintf "\n";
 
   (** Datalink knowing what settings mean **)
-  Xml2h.define "SETTINGS" "{ \\";
+  Xml2h.define "SETTINGS_NAMES" "{ \\";
   List.iter (fun b -> printf " { \"%s\" }, \\\n" (ExtXml.attrib b "var")) settings;
+  lprintf "};\n";
+
+  Xml2h.define "SETTINGS_NAMES_SHORT" "{ \\";
+  List.iter (fun b ->
+    let varname = Str.split (Str.regexp "[_.]+") (ExtXml.attrib b "var") in
+    let shortname = List.fold_left (fun acc c ->
+      try acc ^"_"^ (Str.first_chars c 3) with _ -> acc ^"_"^ c
+    ) "" varname in
+    let shorted = try String.sub shortname 1 16 with _ -> String.sub shortname 1 ((String.length shortname)-1) in
+    printf " \"%s\" , \\\n" shorted
+  ) settings;
   lprintf "};\n";
   Xml2h.define "NB_SETTING" (string_of_int (List.length settings));
 
@@ -124,7 +134,7 @@ let print_dl_settings = fun settings ->
     lprintf "default: var = 0.; break;\\\n";
     left ();
     lprintf "}\\\n";
-    lprintf "DOWNLINK_SEND_DL_VALUE(_trans, _dev, &i, &var);\\\n";
+    lprintf "pprz_msg_send_DL_VALUE(_trans, _dev, AC_ID, &i, &var);\\\n";
     lprintf "i++;\\\n";
     left ()
   end;
@@ -134,7 +144,7 @@ let print_dl_settings = fun settings ->
   lprintf "static inline float settings_get_value(uint8_t i) {\n";
   right ();
   let idx = ref 0 in
-  lprintf "switch (i) { \\\n";
+  lprintf "switch (i) {\n";
   right ();
   List.iter
     (fun s ->
@@ -142,10 +152,26 @@ let print_dl_settings = fun settings ->
       lprintf "case %d: return %s;\n" !idx v; incr idx)
     settings;
   lprintf "default: return 0.;\n";
-  lprintf "}\n";
   left ();
   lprintf "}\n";
-  left()
+  left ();
+  lprintf "}\n"
+
+
+let inttype = function
+"bool" -> "uint8_t"
+  | "int8" -> "int8_t"
+  | "int16" -> "int16_t"
+  | "int32" -> "int32_t"
+  | "int64" -> "int64_t"
+  | "uint8" -> "uint8_t"
+  | "uint16" -> "uint16_t"
+  | "uint32" -> "uint32_t"
+  | "uint64" -> "uint64_t"
+  | "float" -> "float"
+  | "double" -> "double"
+  | x -> failwith (sprintf "Gen_calib.inttype: unknown type '%s'" x)
+
 
 (*
   Generate code for persistent settings
@@ -163,7 +189,8 @@ let print_persistent_settings = fun settings ->
   List.iter
     (fun s ->
       let v = ExtXml.attrib s "var" in
-      lprintf "float s_%d; /* %s */\n" !idx v; incr idx)
+      let t = try ExtXml.attrib s "type" with _ -> "float" in
+      lprintf "%s s_%d; /* %s */\n" (inttype t) !idx v; incr idx)
     pers_settings;
   left();
   lprintf "};\n\n";
@@ -198,7 +225,7 @@ let print_persistent_settings = fun settings ->
       incr idx)
     pers_settings;
   left();
-  lprintf "};\n"
+  lprintf "}\n"
 (*  end *)
 
 
@@ -212,12 +239,7 @@ let calib_mode_of_rc = function
   | "gain_2_down" -> 2, "down"
   | x -> failwith (sprintf "Unknown rc: %s" x)
 
-let param_macro_of_type = fun x -> "ParamVal"^String.capitalize x
-
-let inttype = function
-"int16" -> "int16_t"
-  | "float" -> "float"
-  | x -> failwith (sprintf "Gen_calib.inttype: unknown type '%s'" x)
+let param_macro_of_type = fun x -> "ParamVal"^Compat.capitalize_ascii x
 
 let parse_rc_setting = fun xml ->
   let cursor, cm = calib_mode_of_rc (ExtXml.attrib xml "rc")
@@ -231,7 +253,7 @@ let parse_rc_setting = fun xml ->
   let var_nostruct = String.sub var dot_pos (String.length var - dot_pos) in
   let var_init = var_nostruct ^ "_init" in
 
-  lprintf "if (rc_settings_mode == RC_SETTINGS_MODE_%s) { \\\n" (String.uppercase cm);
+  lprintf "if (rc_settings_mode == RC_SETTINGS_MODE_%s) { \\\n" (Compat.uppercase_ascii cm);
   right ();
   lprintf "static %s %s; \\\n" (inttype t) var_init;
   lprintf "static int16_t slider%d_init; \\\n" cursor;
@@ -246,7 +268,7 @@ let parse_rc_setting = fun xml ->
 
 
 let parse_rc_mode = fun xml ->
-  lprintf "if (pprz_mode == PPRZ_MODE_%s) { \\\n" (ExtXml.attrib xml "name");
+  lprintf "if (autopilot_get_mode() == AP_MODE_%s) { \\\n" (ExtXml.attrib xml "name");
   right ();
   List.iter parse_rc_setting (Xml.children xml);
   left (); lprintf "} \\\n"
@@ -254,21 +276,92 @@ let parse_rc_mode = fun xml ->
 let parse_rc_modes = fun xml ->
   List.iter parse_rc_mode (Xml.children xml)
 
+(*
+ Check if target t is marked as supported in the targets string.
+ The targets string is a pipe delimited list of supported targets, e.g. "ap|nps"
+ To specifiy a list with unsupported targets, prefix with !
+ e.g. "!sim|nps" to mark support for all targets except sim and nps.
+*)
+let supports_target = fun t targets ->
+  if String.length targets > 0 && targets.[0] = '!' then
+    not (Str.string_match (Str.regexp (".*"^t^".*")) targets 0)
+  else
+    Str.string_match (Str.regexp (".*"^t^".*")) targets 0
 
-let join_xml_files = fun xml_files ->
+let join_xml_files = fun xml_sys_files xml_user_files ->
   let dl_settings = ref []
   and rc_settings = ref [] in
+  let target = try Sys.getenv "TARGET" with _ -> "" in
   List.iter (fun xml_file ->
-    let xml = Xml.parse_file xml_file in
+    (* look for a specific name after settings file (in case of modules) *)
+    let split = Str.split (Str.regexp "~") xml_file in
+    let xml_file, name = match split with
+    | [f; n] -> f, n
+    | _ -> xml_file, ""
+    in
+    let xml = ExtXml.parse_file xml_file in
     let these_rc_settings =
       try Xml.children (ExtXml.child xml "rc_settings") with
           Not_found -> [] in
     let these_dl_settings =
-      try Xml.children (ExtXml.child xml "dl_settings") with
-          Not_found -> [] in
+      try
+        (* test if the file is plain settings file or a module file *)
+        let xml =
+          if Xml.tag xml = "module"
+          then begin
+            (* test if the module is loaded or not *)
+            if List.exists (fun n ->
+              if Xml.tag n = "makefile" then begin
+                let t = ExtXml.attrib_or_default n "target" Env.default_module_targets in
+                supports_target target t
+              end
+              else false
+              ) (Xml.children xml)
+            then
+              List.filter (fun t ->
+                (* filter xml nodes and keep them if:
+                 * it is a settings node
+                 * the current target is supported in the 'target' attribute
+                 * if no 'target' attribute always keep it
+                 *)
+                Xml.tag t = "settings" && supports_target target (ExtXml.attrib_or_default t "target" target)
+              ) (Xml.children xml)
+            else []
+          end
+          else begin
+            (* if the top <settings> node has a target attribute,
+               only add if matches current target *)
+            let t = ExtXml.attrib_or_default xml "target" "" in
+            if t = "" || (supports_target target t) then
+              [xml]
+            else
+              []
+          end
+        in
+        (* include settings if name is matching *)
+        List.fold_left (fun l x ->
+          if (ExtXml.attrib_or_default x "name" "") = name then
+            l @ (Xml.children (ExtXml.child x "dl_settings"))
+          else l
+        ) [] xml
+      with
+      | Not_found -> [] in
     rc_settings := these_rc_settings @ !rc_settings;
     dl_settings := these_dl_settings @ !dl_settings)
-    xml_files;
+    xml_user_files;
+
+    (* add system settings grouped under the same tab *)
+    let dl_sys = List.map (fun xml_file ->
+      let xml = ExtXml.parse_file xml_file in
+      (* take "second stage" dl_settings nodes *)
+      try
+        let dl = ExtXml.child xml "dl_settings" in
+        Xml.children dl
+      with Not_found -> []
+    ) xml_sys_files in
+    dl_settings := Xml.Element("dl_settings", [("name", "System")], List.rev (List.flatten dl_sys)) :: !dl_settings;
+
+    (* return final node *)
   Xml.Element("rc_settings",[],!rc_settings), Xml.Element("dl_settings",[],!dl_settings)
 
 
@@ -277,20 +370,24 @@ let _ =
   if Array.length Sys.argv < 4 then
     failwith (Printf.sprintf "Usage: %s output_xml_file input_xml_file(s) input_xml_modules" Sys.argv.(0));
   let h_name = "SETTINGS_H"
-  and xml_files = ref [] in
-  for i = 2 to Array.length Sys.argv - 1 do
-    xml_files := Sys.argv.(i) :: !xml_files;
-  done;
+  and xml_files = Array.to_list (Array.sub Sys.argv 2 (Array.length Sys.argv - 2)) in
+  (* split system settings and user settings based on '*' separator *)
+  let xml_sys_files, xml_user_files, _ = List.fold_left (fun (sys, user, delim) x ->
+    if x = "--" then (sys, user, true)
+    else if delim then (sys, x :: user, delim)
+    else (x :: sys, user, delim)) ([], [], false) xml_files
+  in
 
   try
-    printf "/* This file has been generated from %s */\n" (String.concat " " !xml_files);
+    printf "/* This file has been generated by gen_settings from %s */\n" (String.concat " " xml_files);
+    printf "/* Version %s */\n" (Env.get_paparazzi_version ());
     printf "/* Please DO NOT EDIT */\n\n";
 
     printf "#ifndef %s\n" h_name;
     define h_name "";
     nl ();
 
-    let rc_settings, dl_settings = join_xml_files !xml_files in
+    let rc_settings, dl_settings = join_xml_files xml_sys_files xml_user_files in
 
     let xml = Xml.Element ("settings", [], [rc_settings; dl_settings]) in
     let f = open_out Sys.argv.(1) in

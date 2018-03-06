@@ -33,23 +33,30 @@ VARINCLUDE = $(PAPARAZZI_HOME)/var/include
 
 INCLUDES = -I$(PAPARAZZI_SRC)/sw/include -I$(PAPARAZZI_SRC)/sw/airborne -I$(PAPARAZZI_SRC)/conf/autopilot -I$(PAPARAZZI_SRC)/sw/airborne/arch/$($(TARGET).ARCHDIR) -I$(VARINCLUDE) -I$(ACINCLUDE)
 
+VPATH = .
 
 ifneq ($(MAKECMDGOALS),clean)
   include $(AIRCRAFT_BUILD_DIR)/Makefile.ac
   $(TARGET).srcs += $($(TARGET).EXTRA_SRCS)
-  include ../../conf/Makefile.local
+  include $(PAPARAZZI_SRC)/conf/Makefile.local
 
 # check if ARCHDIR is set
   ifeq ($($(TARGET).ARCHDIR), )
     $(error Architecture not set, maybe you forgot to add the target? e.g. <target name="tunnel" board="twog_1.0"/>)
   else
     ifdef $(TARGET).MAKEFILE
-      include ../../conf/Makefile.$($(TARGET).MAKEFILE)
+      include $(PAPARAZZI_SRC)/conf/Makefile.$($(TARGET).MAKEFILE)
     else
-      include ../../conf/Makefile.$($(TARGET).ARCHDIR)
+      include $(PAPARAZZI_SRC)/conf/Makefile.$($(TARGET).ARCHDIR)
     endif
   endif
 
+  $(TARGET).CFLAGS += -DGIT_SHA1=$(GIT_SHA1)
+  $(TARGET).CFLAGS += -DGIT_DESC=$(GIT_DESC)
+  $(TARGET).CFLAGS += -DPPRZ_VER=$(PPRZ_VER)
+  $(TARGET).CFLAGS += -DPPRZ_VER_MAJOR=$(PPRZ_VER_MAJOR)
+  $(TARGET).CFLAGS += -DPPRZ_VER_MINOR=$(PPRZ_VER_MINOR)
+  $(TARGET).CFLAGS += -DPPRZ_VER_PATCH=$(PPRZ_VER_PATCH)
   ifdef PRINT_CONFIG
     $(TARGET).CFLAGS += -DPRINT_CONFIG
   endif

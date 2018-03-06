@@ -253,6 +253,14 @@
 #define SPI_SELECT_SLAVE2_PORT GPIOE
 #define SPI_SELECT_SLAVE2_PIN GPIO3
 
+#define SPI1_GPIO_PORT_NSS GPIOA
+#define SPI1_GPIO_NSS GPIO4
+
+#define SPI2_GPIO_PORT_NSS GPIOB
+#define SPI2_GPIO_NSS GPIO12
+
+#define SPI3_GPIO_PORT_NSS GPIOA
+#define SPI3_GPIO_NSS GPIO15
 
 /***************************************************************************************************/
 /**************************************    I2C     *************************************************/
@@ -275,7 +283,7 @@
 /**************************************    ADC     *************************************************/
 /***************************************************************************************************/
 
-#define USE_AD_TIM2	1
+#define USE_AD_TIM2 1
 
 // For experimenting only
 #define USE_ADC_1   1
@@ -393,7 +401,6 @@
 #if USE_PWM0
 #define PWM_SERVO_0 0
 #define PWM_SERVO_0_TIMER TIM1
-#define PWM_SERVO_0_RCC RCC_GPIOE
 #define PWM_SERVO_0_GPIO GPIOE
 #define PWM_SERVO_0_PIN GPIO9
 #define PWM_SERVO_0_AF GPIO_AF1
@@ -406,7 +413,6 @@
 #if USE_PWM1
 #define PWM_SERVO_1 1
 #define PWM_SERVO_1_TIMER TIM1
-#define PWM_SERVO_1_RCC RCC_GPIOE
 #define PWM_SERVO_1_GPIO GPIOE
 #define PWM_SERVO_1_PIN GPIO11
 #define PWM_SERVO_1_AF GPIO_AF1
@@ -419,7 +425,6 @@
 #if USE_PWM2
 #define PWM_SERVO_2 2
 #define PWM_SERVO_2_TIMER TIM1
-#define PWM_SERVO_2_RCC RCC_GPIOE
 #define PWM_SERVO_2_GPIO GPIOE
 #define PWM_SERVO_2_PIN GPIO13
 #define PWM_SERVO_2_AF GPIO_AF1
@@ -432,7 +437,6 @@
 #if USE_PWM3
 #define PWM_SERVO_3 3
 #define PWM_SERVO_3_TIMER TIM1
-#define PWM_SERVO_3_RCC RCC_GPIOE
 #define PWM_SERVO_3_GPIO GPIOE
 #define PWM_SERVO_3_PIN GPIO14
 #define PWM_SERVO_3_AF GPIO_AF1
@@ -445,7 +449,6 @@
 #if USE_PWM4
 #define PWM_SERVO_4 4
 #define PWM_SERVO_4_TIMER TIM9
-#define PWM_SERVO_4_RCC RCC_GPIOE
 #define PWM_SERVO_4_GPIO GPIOE
 #define PWM_SERVO_4_PIN GPIO5
 #define PWM_SERVO_4_AF GPIO_AF3
@@ -458,7 +461,6 @@
 #if USE_PWM5
 #define PWM_SERVO_5 5
 #define PWM_SERVO_5_TIMER TIM9
-#define PWM_SERVO_5_RCC RCC_GPIOE
 #define PWM_SERVO_5_GPIO GPIOE
 #define PWM_SERVO_5_PIN GPIO6
 #define PWM_SERVO_5_AF GPIO_AF3
@@ -472,7 +474,6 @@
 #if USE_PWM6
 #define PWM_SERVO_6 6
 #define PWM_SERVO_6_TIMER TIM5
-#define PWM_SERVO_6_RCC RCC_GPIOA
 #define PWM_SERVO_6_GPIO GPIOA
 #define PWM_SERVO_6_PIN GPIO3
 #define PWM_SERVO_6_AF GPIO_AF2
@@ -485,7 +486,6 @@
 #if USE_PWM7
 #define PWM_SERVO_7 7
 #define PWM_SERVO_7_TIMER TIM5
-#define PWM_SERVO_7_RCC RCC_GPIOA
 #define PWM_SERVO_7_GPIO GPIOA
 #define PWM_SERVO_7_PIN GPIO2
 #define PWM_SERVO_7_AF GPIO_AF2
@@ -498,7 +498,6 @@
 #if USE_PWM8
 #define PWM_SERVO_8 8
 #define PWM_SERVO_8_TIMER TIM5
-#define PWM_SERVO_8_RCC RCC_GPIOA
 #define PWM_SERVO_8_GPIO GPIOA
 #define PWM_SERVO_8_PIN GPIO1
 #define PWM_SERVO_8_AF GPIO_AF2
@@ -511,7 +510,6 @@
 #if USE_PWM9
 #define PWM_SERVO_9 9
 #define PWM_SERVO_9_TIMER TIM5
-#define PWM_SERVO_9_RCC RCC_GPIOA
 #define PWM_SERVO_9_GPIO GPIOA
 #define PWM_SERVO_9_PIN GPIO0
 #define PWM_SERVO_9_AF GPIO_AF2
@@ -525,7 +523,6 @@
 #if USE_PWM10
 #define PWM_SERVO_10 10
 #define PWM_SERVO_10_TIMER TIM12
-#define PWM_SERVO_10_RCC RCC_GPIOB
 #define PWM_SERVO_10_GPIO GPIOB
 #define PWM_SERVO_10_PIN GPIO14
 #define PWM_SERVO_10_AF GPIO_AF9
@@ -538,7 +535,6 @@
 #if USE_PWM11
 #define PWM_SERVO_11 11
 #define PWM_SERVO_11_TIMER TIM12
-#define PWM_SERVO_11_RCC RCC_GPIOB
 #define PWM_SERVO_11_GPIO GPIOB
 #define PWM_SERVO_11_PIN GPIO15
 #define PWM_SERVO_11_AF GPIO_AF9

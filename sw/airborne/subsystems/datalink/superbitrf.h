@@ -29,8 +29,9 @@
 
 #include "mcu_periph/gpio.h"
 #include "peripherals/cyrf6936.h"
+#include "pprzlink/pprzlink_device.h"
+#include "pprzlink/pprz_transport.h"
 #include "subsystems/datalink/datalink.h"
-#include "subsystems/datalink/pprz_transport.h"
 
 /* The timings in microseconds */
 #define SUPERBITRF_BIND_RECV_TIME       10000       /**< The time to wait for a bind packet on a channel in microseconds */
@@ -53,21 +54,23 @@ enum SuperbitRFStatus {
 
 /* The different resolutions a transmitter can be in */
 enum dsm_resolution {
-    SUPERBITRF_10_BIT_RESOLUTION           = 0x00,     /**< The transmitter has a 10 bit resolution */
-    SUPERBITRF_11_BIT_RESOLUTION           = 0x01,     /**< The transmitter has a 11 bit resolution */
+  SUPERBITRF_10_BIT_RESOLUTION           = 0x00,     /**< The transmitter has a 10 bit resolution */
+  SUPERBITRF_11_BIT_RESOLUTION           = 0x01,     /**< The transmitter has a 11 bit resolution */
 };
 
 /* The different protocols a transmitter can send */
 enum dsm_protocol {
-    DSM_DSM2_1          = 0x01,     /**< The original DSM2 protocol with 1 packet of data */
-    DSM_DSM2_2          = 0x02,     /**< The original DSM2 protocol with 2 packets of data */
-    DSM_DSM2P           = 0x10,     /**< Our own DSM2 Paparazzi protocol */
-    DSM_DSMXP           = 0x11,     /**< Our own DSMX Paparazzi protocol */
-    DSM_DSMX_1          = 0xA2,     /**< The original DSMX protocol with 1 packet of data */
-    DSM_DSMX_2          = 0xB2,     /**< The original DSMX protocol with 2 packets of data */
+  DSM_DSM2_1          = 0x01,     /**< The original DSM2 protocol with 1 packet of data */
+  DSM_DSM2_2          = 0x02,     /**< The original DSM2 protocol with 2 packets of data */
+  DSM_DSM2P           = 0x10,     /**< Our own DSM2 Paparazzi protocol */
+  DSM_DSMXP           = 0x11,     /**< Our own DSMX Paparazzi protocol */
+  DSM_DSMX_1          = 0xA2,     /**< The original DSMX protocol with 1 packet of data */
+  DSM_DSMX_2          = 0xB2,     /**< The original DSMX protocol with 2 packets of data */
 };
 #define IS_DSM2(x)          (x == DSM_DSM2P || x == DSM_DSM2_1 || x == DSM_DSM2_2)
 #define IS_DSMX(x)          (!IS_DSM2(x))
+
+#define SUPERBITRF_TX_BUFFER_SIZE 128
 
 /* The superbitrf structure */
 struct SuperbitRF {
@@ -75,12 +78,12 @@ struct SuperbitRF {
   volatile enum SuperbitRFStatus status;    /**< The status of the superbitRF */
   uint8_t state;                            /**< The states each status can be in */
   uint32_t timer;                           /**< The timer in microseconds */
-  bool_t timer_overflow;                    /**< When the timer overflows */
+  bool timer_overflow;                    /**< When the timer overflows */
   uint8_t timeouts;                         /**< The amount of timeouts */
   uint32_t transfer_timeouts;               /**< The amount of timeouts during transfer */
   uint32_t resync_count;                    /**< The amount of resyncs needed during transfer */
   uint8_t packet_loss_bit;                  /**< The packet loss indicating bit */
-  bool_t packet_loss;                       /**< When we have packet loss last packet */
+  bool packet_loss;                       /**< When we have packet loss last packet */
 
   uint8_t channels[23];                     /**< The channels used for DSM2/DSMX */
   uint8_t channel_idx;                      /**< The current channel index */
@@ -100,31 +103,31 @@ struct SuperbitRF {
   uint8_t sop_col;                          /**< The sop code column number calculated with the bind MFG id */
   uint8_t data_col;                         /**< The data code column number calculated with the bind MFG id */
 
-  bool_t rc_frame_available;                /**< When a RC frame is available */
+  bool rc_frame_available;                /**< When a RC frame is available */
   uint32_t timing1;                         /**< Time between last receive in microseconds */
   uint32_t timing2;                         /**< Time between second last receive in microseconds */
   int16_t rc_values[14];                    /**< The rc values from the packet */
 
   struct pprz_transport rx_transport;       /**< The receive transport */
 
-  uint8_t tx_buffer[128];                   /**< The transmit buffer */
+  uint8_t tx_buffer[SUPERBITRF_TX_BUFFER_SIZE]; /**< The transmit buffer */
   uint8_t tx_insert_idx;                    /**< The transmit buffer insert index */
   uint8_t tx_extract_idx;                   /**< The transmit buffer extract index */
+
+  /** Generic device interface */
+  struct link_device device;
 };
 
 /* The superbitrf functions and structures */
 extern struct SuperbitRF superbitrf;
-void superbitrf_init(void);
-void superbitrf_event(void);
+extern void superbitrf_init(void);
+extern void superbitrf_event(void);
+extern void superbitrf_dl_init(void);
+extern void superbitrf_dl_event(void);
+extern void superbitrf_set_mfg_id(uint32_t id);
+extern void superbitrf_set_protocol(uint8_t protocol);
 
-/* The datalink defines */
-#define SuperbitRFInit() { }//superbitrf_init(); }
-#define SuperbitRFCheckFreeSpace(_x) (((superbitrf.tx_insert_idx+1) %128) != superbitrf.tx_extract_idx)
-#define SuperbitRFTransmit(_x) {                                    \
-    superbitrf.tx_buffer[superbitrf.tx_insert_idx] = _x;            \
-    superbitrf.tx_insert_idx = (superbitrf.tx_insert_idx+1) %128;   \
-  }
-#define SuperbitRFSendMessage() { }
-#define SuperbitRFCheckAndParse() { }
+/* The pprz transport structure */
+extern struct pprz_transport pprz_srf_tp;
 
 #endif /* DATALINK_SUPERBITRF_H */

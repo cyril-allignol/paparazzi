@@ -24,50 +24,30 @@
  *
  * Vertical filter (in float) estimating altitude, velocity and accel bias.
  *
+ * X = [ z zdot bias ]
+ *
  */
 
 #include "subsystems/ins/vf_float.h"
 #include "generated/airframe.h"
 #include "std.h"
 
-#ifndef INS_PROPAGATE_FREQUENCY
-#ifdef AHRS_PROPAGATE_FREQUENCY
-#define INS_PROPAGATE_FREQUENCY AHRS_PROPAGATE_FREQUENCY
-#else
-#define INS_PROPAGATE_FREQUENCY PERIODIC_FREQUENCY
-#endif
-#endif
-PRINT_CONFIG_VAR(INS_PROPAGATE_FREQUENCY)
-
-#define DT_VFILTER (1./(INS_PROPAGATE_FREQUENCY))
-
-/*
-
-X = [ z zdot bias ]
-
-temps :
-  propagate 86us
-  update    46us
-
-*/
-/* initial error covariance diagonal */
-#ifndef VF_FLOAT_INIT_PXX
-#define VF_FLOAT_INIT_PXX 1.0
+/** initial error covariance diagonal */
+#ifndef VFF_INIT_PXX
+#define VFF_INIT_PXX 1.0
 #endif
 
-/* process noise covariance Q */
-#ifndef VF_FLOAT_ACCEL_NOISE
-#define VF_FLOAT_ACCEL_NOISE 0.5
+/** process noise covariance Q */
+#ifndef VFF_ACCEL_NOISE
+#define VFF_ACCEL_NOISE 0.5
 #endif
 
-/* measurement noise covariance R */
-#ifndef VF_FLOAT_MEAS_NOISE
-#define VF_FLOAT_MEAS_NOISE 1.0
+/** measurement noise covariance R */
+#ifndef VFF_MEAS_NOISE
+#define VFF_MEAS_NOISE 1.0
 #endif
 
 /* default parameters */
-#define Qzz       VF_FLOAT_ACCEL_NOISE * DT_VFILTER * DT_VFILTER / 2.
-#define Qzdotzdot VF_FLOAT_ACCEL_NOISE * DT_VFILTER
 #define Qbiasbias 1e-7
 
 struct Vff vff;
@@ -75,100 +55,110 @@ struct Vff vff;
 #if PERIODIC_TELEMETRY
 #include "subsystems/datalink/telemetry.h"
 
-static void send_vff(void) {
-  DOWNLINK_SEND_VFF(DefaultChannel, DefaultDevice,
-      &vff.z_meas, &vff.z, &vff.zdot, &vff.bias,
-      &vff.P[0][0], &vff.P[1][1], &vff.P[2][2]);
+static void send_vff(struct transport_tx *trans, struct link_device *dev)
+{
+  pprz_msg_send_VFF(trans, dev, AC_ID,
+                    &vff.z_meas, &vff.z, &vff.zdot, &vff.bias,
+                    &vff.P[0][0], &vff.P[1][1], &vff.P[2][2]);
 }
 #endif
 
-void vff_init_zero(void) {
+void vff_init_zero(void)
+{
   vff_init(0., 0., 0.);
 }
 
-void vff_init(float init_z, float init_zdot, float init_bias) {
+void vff_init(float init_z, float init_zdot, float init_bias)
+{
   vff.z    = init_z;
   vff.zdot = init_zdot;
   vff.bias = init_bias;
   int i, j;
-  for (i=0; i<VFF_STATE_SIZE; i++) {
-    for (j=0; j<VFF_STATE_SIZE; j++)
+  for (i = 0; i < VFF_STATE_SIZE; i++) {
+    for (j = 0; j < VFF_STATE_SIZE; j++) {
       vff.P[i][j] = 0.;
-    vff.P[i][i] = VF_FLOAT_INIT_PXX;
+    }
+    vff.P[i][i] = VFF_INIT_PXX;
   }
 
 #if PERIODIC_TELEMETRY
-  register_periodic_telemetry(DefaultPeriodic, "VFF", send_vff);
+  register_periodic_telemetry(DefaultPeriodic, PPRZ_MSG_ID_VFF, send_vff);
 #endif
 }
 
 
-/*
-
- F = [ 1 dt -dt^2/2
-       0  1 -dt
-       0  0   1     ];
-
- B = [ dt^2/2 dt 0]';
-
- Q = [ 0.01  0     0
-       0     0.01  0
-       0     0     0.001 ];
-
- Xk1 = F * Xk0 + B * accel;
-
- Pk1 = F * Pk0 * F' + Q;
-
-*/
-void vff_propagate(float accel) {
+/**
+ * Propagate the filter in time.
+ *
+ * F = [ 1 dt -dt^2/2
+ *       0  1 -dt
+ *       0  0   1     ];
+ *
+ * B = [ dt^2/2 dt 0]';
+ *
+ * Q = [ 0.01  0     0
+ *       0     0.01  0
+ *       0     0     0.001 ];
+ *
+ * Xk1 = F * Xk0 + B * accel;
+ *
+ * Pk1 = F * Pk0 * F' + Q;
+ *
+ */
+void vff_propagate(float accel, float dt)
+{
   /* update state (Xk1) */
   vff.zdotdot = accel + 9.81 - vff.bias;
-  vff.z = vff.z + DT_VFILTER * vff.zdot;
-  vff.zdot = vff.zdot + DT_VFILTER * vff.zdotdot;
+  vff.z = vff.z + dt * vff.zdot;
+  vff.zdot = vff.zdot + dt * vff.zdotdot;
   /* update covariance (Pk1) */
-  const float FPF00 = vff.P[0][0] + DT_VFILTER * ( vff.P[1][0] + vff.P[0][1] + DT_VFILTER * vff.P[1][1] );
-  const float FPF01 = vff.P[0][1] + DT_VFILTER * ( vff.P[1][1] - vff.P[0][2] - DT_VFILTER * vff.P[1][2] );
-  const float FPF02 = vff.P[0][2] + DT_VFILTER * ( vff.P[1][2] );
-  const float FPF10 = vff.P[1][0] + DT_VFILTER * (-vff.P[2][0] + vff.P[1][1] - DT_VFILTER * vff.P[2][1] );
-  const float FPF11 = vff.P[1][1] + DT_VFILTER * (-vff.P[2][1] - vff.P[1][2] + DT_VFILTER * vff.P[2][2] );
-  const float FPF12 = vff.P[1][2] + DT_VFILTER * (-vff.P[2][2] );
-  const float FPF20 = vff.P[2][0] + DT_VFILTER * ( vff.P[2][1] );
-  const float FPF21 = vff.P[2][1] + DT_VFILTER * (-vff.P[2][2] );
+  const float FPF00 = vff.P[0][0] + dt * (vff.P[1][0] + vff.P[0][1] + dt * vff.P[1][1]);
+  const float FPF01 = vff.P[0][1] + dt * (vff.P[1][1] - vff.P[0][2] - dt * vff.P[1][2]);
+  const float FPF02 = vff.P[0][2] + dt * (vff.P[1][2]);
+  const float FPF10 = vff.P[1][0] + dt * (-vff.P[2][0] + vff.P[1][1] - dt * vff.P[2][1]);
+  const float FPF11 = vff.P[1][1] + dt * (-vff.P[2][1] - vff.P[1][2] + dt * vff.P[2][2]);
+  const float FPF12 = vff.P[1][2] + dt * (-vff.P[2][2]);
+  const float FPF20 = vff.P[2][0] + dt * (vff.P[2][1]);
+  const float FPF21 = vff.P[2][1] + dt * (-vff.P[2][2]);
   const float FPF22 = vff.P[2][2];
 
-  vff.P[0][0] = FPF00 + Qzz;
+  vff.P[0][0] = FPF00 + VFF_ACCEL_NOISE * dt * dt / 2.;
   vff.P[0][1] = FPF01;
   vff.P[0][2] = FPF02;
   vff.P[1][0] = FPF10;
-  vff.P[1][1] = FPF11 + Qzdotzdot;
+  vff.P[1][1] = FPF11 + VFF_ACCEL_NOISE * dt;
   vff.P[1][2] = FPF12;
   vff.P[2][0] = FPF20;
   vff.P[2][1] = FPF21;
   vff.P[2][2] = FPF22 + Qbiasbias;
 
 }
-/*
-  H = [1 0 0];
-  R = 0.1;
-  // state residual
-  y = rangemeter - H * Xm;
-  // covariance residual
-  S = H*Pm*H' + R;
-  // kalman gain
-  K = Pm*H'*inv(S);
-  // update state
-  Xp = Xm + K*y;
-  // update covariance
-  Pp = Pm - K*H*Pm;
-*/
-static inline void update_z_conf(float z_meas, float conf) {
+
+/**
+ * Update altitude.
+ *
+ * H = [1 0 0];
+ * R = 0.1;
+ * // state residual
+ * y = rangemeter - H * Xm;
+ * // covariance residual
+ * S = H*Pm*H' + R;
+ * // kalman gain
+ * K = Pm*H'*inv(S);
+ * // update state
+ * Xp = Xm + K*y;
+ * // update covariance
+ * Pp = Pm - K*H*Pm;
+ */
+static inline void update_z_conf(float z_meas, float conf)
+{
   vff.z_meas = z_meas;
 
   const float y = z_meas - vff.z;
   const float S = vff.P[0][0] + conf;
-  const float K1 = vff.P[0][0] * 1/S;
-  const float K2 = vff.P[1][0] * 1/S;
-  const float K3 = vff.P[2][0] * 1/S;
+  const float K1 = vff.P[0][0] * 1 / S;
+  const float K2 = vff.P[1][0] * 1 / S;
+  const float K3 = vff.P[2][0] * 1 / S;
 
   vff.z    = vff.z    + K1 * y;
   vff.zdot = vff.zdot + K2 * y;
@@ -196,11 +186,15 @@ static inline void update_z_conf(float z_meas, float conf) {
 
 }
 
-void vff_update(float z_meas) {
-  update_z_conf(z_meas, VF_FLOAT_MEAS_NOISE);
+void vff_update(float z_meas)
+{
+  update_z_conf(z_meas, VFF_MEAS_NOISE);
 }
 
-void vff_update_z_conf(float z_meas, float conf) {
+void vff_update_z_conf(float z_meas, float conf)
+{
+  if (conf < 0.f) { return; }
+
   update_z_conf(z_meas, conf);
 }
 
@@ -218,12 +212,13 @@ void vff_update_z_conf(float z_meas, float conf) {
   // update covariance
   Pp = Pm - K*H*Pm;
 */
-static inline void update_vz_conf(float vz, float conf) {
+static inline void update_vz_conf(float vz, float conf)
+{
   const float yd = vz - vff.zdot;
   const float S = vff.P[1][1] + conf;
-  const float K1 = vff.P[0][1] * 1/S;
-  const float K2 = vff.P[1][1] * 1/S;
-  const float K3 = vff.P[2][1] * 1/S;
+  const float K1 = vff.P[0][1] * 1 / S;
+  const float K2 = vff.P[1][1] * 1 / S;
+  const float K3 = vff.P[2][1] * 1 / S;
 
   vff.z    = vff.z    + K1 * yd;
   vff.zdot = vff.zdot + K2 * yd;
@@ -251,11 +246,14 @@ static inline void update_vz_conf(float vz, float conf) {
 
 }
 
-void vff_update_vz_conf(float vz_meas, float conf) {
+void vff_update_vz_conf(float vz_meas, float conf)
+{
+  if (conf < 0.f) { return; }
+
   update_vz_conf(vz_meas, conf);
 }
 
-void vff_realign(float z_meas) {
-  vff.z = z_meas;
-  vff.zdot = 0;
+void vff_realign(float z_meas)
+{
+  vff_init(z_meas, 0., 0.);
 }

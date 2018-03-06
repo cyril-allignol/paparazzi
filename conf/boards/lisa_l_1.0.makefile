@@ -2,7 +2,7 @@
 #
 # lisa_l_1.0.makefile
 #
-# http://paparazzi.enac.fr/wiki/User/LisaL
+# http://wiki.paparazziuav.org/wiki/User/LisaL
 #
 
 BOARD=lisa_l
@@ -13,7 +13,7 @@ $(TARGET).LDSCRIPT=$(SRC_ARCH)/lisa-l.ld
 # -----------------------------------------------------------------------
 ifeq ($(BOARD_PROCESSOR),'omap')
 
-	ARCH  = omap
+	ARCH  = linux
 	$(TARGET).LDFLAGS += -levent -lm
 
 # -----------------------------------------------------------------------

@@ -67,9 +67,9 @@ enum L3g4200ConfStatus {
 struct L3g4200 {
   struct i2c_periph *i2c_p;
   struct i2c_transaction i2c_trans;
-  bool_t initialized;                 ///< config done flag
+  bool initialized;                 ///< config done flag
   enum L3g4200ConfStatus init_status; ///< init status
-  volatile bool_t data_available;     ///< data ready flag
+  volatile bool data_available;     ///< data ready flag
   union {
     struct Int32Rates rates;          ///< data as angular rates in gyro coordinate system
     int32_t value[3];                 ///< data values accessible by channel index
@@ -85,11 +85,13 @@ extern void l3g4200_read(struct L3g4200 *l3g);
 extern void l3g4200_event(struct L3g4200 *l3g);
 
 /// convenience function: read or start configuration if not already initialized
-static inline void l3g4200_periodic(struct L3g4200 *l3g) {
-  if (l3g->initialized)
+static inline void l3g4200_periodic(struct L3g4200 *l3g)
+{
+  if (l3g->initialized) {
     l3g4200_read(l3g);
-  else
+  } else {
     l3g4200_start_configure(l3g);
+  }
 }
 
 #endif // L3G4200_H

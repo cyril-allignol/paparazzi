@@ -32,53 +32,53 @@
 #include "generated/airframe.h"
 #include "subsystems/imu.h"
 
-#include "subsystems/imu/imu_mpu60x0_defaults.h"
 #include "peripherals/mpu60x0_spi.h"
 #include "peripherals/hmc58xx.h"
 
-#if !defined IMU_GYRO_P_SIGN & !defined IMU_GYRO_Q_SIGN & !defined IMU_GYRO_R_SIGN
-#define IMU_GYRO_P_SIGN   1
-#define IMU_GYRO_Q_SIGN   1
-#define IMU_GYRO_R_SIGN   1
-#endif
-#if !defined IMU_ACCEL_X_SIGN & !defined IMU_ACCEL_Y_SIGN & !defined IMU_ACCEL_Z_SIGN
-#define IMU_ACCEL_X_SIGN  1
-#define IMU_ACCEL_Y_SIGN  1
-#define IMU_ACCEL_Z_SIGN  1
-#endif
-#if !defined IMU_MAG_X_SIGN & !defined IMU_MAG_Y_SIGN & !defined IMU_MAG_Z_SIGN
-#define IMU_MAG_X_SIGN 1
-#define IMU_MAG_Y_SIGN 1
-#define IMU_MAG_Z_SIGN 1
+#ifndef IMU_MPU_GYRO_RANGE
+#define IMU_MPU_GYRO_RANGE MPU60X0_GYRO_RANGE_2000
 #endif
 
+#ifndef IMU_MPU_ACCEL_RANGE
+#define IMU_MPU_ACCEL_RANGE MPU60X0_ACCEL_RANGE_16G
+#endif
+
+// Set default sensitivity based on range if needed
+#if !defined IMU_GYRO_P_SENS & !defined IMU_GYRO_Q_SENS & !defined IMU_GYRO_R_SENS
+#define IMU_GYRO_P_SENS MPU60X0_GYRO_SENS[IMU_MPU_GYRO_RANGE]
+#define IMU_GYRO_P_SENS_NUM MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][0]
+#define IMU_GYRO_P_SENS_DEN MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][1]
+#define IMU_GYRO_Q_SENS MPU60X0_GYRO_SENS[IMU_MPU_GYRO_RANGE]
+#define IMU_GYRO_Q_SENS_NUM MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][0]
+#define IMU_GYRO_Q_SENS_DEN MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][1]
+#define IMU_GYRO_R_SENS MPU60X0_GYRO_SENS[IMU_MPU_GYRO_RANGE]
+#define IMU_GYRO_R_SENS_NUM MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][0]
+#define IMU_GYRO_R_SENS_DEN MPU60X0_GYRO_SENS_FRAC[IMU_MPU_GYRO_RANGE][1]
+#endif
+
+// Set default sensitivity based on range if needed
+#if !defined IMU_ACCEL_X_SENS & !defined IMU_ACCEL_Y_SENS & !defined IMU_ACCEL_Z_SENS
+#define IMU_ACCEL_X_SENS MPU60X0_ACCEL_SENS[IMU_MPU_ACCEL_RANGE]
+#define IMU_ACCEL_X_SENS_NUM MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][0]
+#define IMU_ACCEL_X_SENS_DEN MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][1]
+#define IMU_ACCEL_Y_SENS MPU60X0_ACCEL_SENS[IMU_MPU_ACCEL_RANGE]
+#define IMU_ACCEL_Y_SENS_NUM MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][0]
+#define IMU_ACCEL_Y_SENS_DEN MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][1]
+#define IMU_ACCEL_Z_SENS MPU60X0_ACCEL_SENS[IMU_MPU_ACCEL_RANGE]
+#define IMU_ACCEL_Z_SENS_NUM MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][0]
+#define IMU_ACCEL_Z_SENS_DEN MPU60X0_ACCEL_SENS_FRAC[IMU_MPU_ACCEL_RANGE][1]
+#endif
+
+
 struct ImuMpu6000Hmc5883 {
-  volatile bool_t gyro_valid;
-  volatile bool_t accel_valid;
-  volatile bool_t mag_valid;
   struct Mpu60x0_Spi mpu;
   struct Hmc58xx hmc;
 };
 
 extern struct ImuMpu6000Hmc5883 imu_mpu_hmc;
 
+extern void imu_mpu_hmc_init(void);
+extern void imu_mpu_hmc_periodic(void);
 extern void imu_mpu_hmc_event(void);
-
-
-static inline void ImuEvent(void (* _gyro_handler)(void), void (* _accel_handler)(void), void (* _mag_handler)(void)) {
-  imu_mpu_hmc_event();
-  if (imu_mpu_hmc.gyro_valid) {
-    imu_mpu_hmc.gyro_valid = FALSE;
-    _gyro_handler();
-  }
-  if (imu_mpu_hmc.accel_valid) {
-    imu_mpu_hmc.accel_valid = FALSE;
-    _accel_handler();
-  }
-  if (imu_mpu_hmc.mag_valid) {
-    imu_mpu_hmc.mag_valid = FALSE;
-    _mag_handler();
-  }
-}
 
 #endif /* IMU_MPU6000_HMC5883_H */

@@ -23,15 +23,25 @@
  */
 
 #define DATALINK_C
+#define MODULES_C
+
+/* PERIODIC_C_MAIN is defined before generated/periodic_telemetry.h
+ * in order to implement telemetry_mode_Main_*
+ */
 #define PERIODIC_C_MAIN
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "generated/periodic_telemetry.h"
+#pragma GCC diagnostic pop
 
 #include "generated/airframe.h"
 #include "generated/settings.h"
-#include "generated/periodic_telemetry.h"
+#include "generated/modules.h"
 
 #include "subsystems/datalink/datalink.h"
 #include "subsystems/datalink/downlink.h"
-
+#include "modules/datalink/pprz_dl.h"
 
 #include "mcu.h"
 #include "mcu_periph/sys_time.h"
@@ -40,58 +50,73 @@
 #include "subsystems/actuators.h"
 
 
-static inline void main_init( void );
-static inline void main_periodic( void );
+static inline void main_init(void);
+static inline void main_periodic(void);
 static inline void main_event(void);
 
-int main(void) {
+int main(void)
+{
 
   main_init();
   while (1) {
-    if (sys_time_check_and_ack_timer(0))
+    if (sys_time_check_and_ack_timer(0)) {
       main_periodic();
+    }
     main_event();
   };
   return 0;
 }
 
 
-static inline void main_init( void ) {
+static inline void main_init(void)
+{
   mcu_init();
+
+  downlink_init();
+  pprz_dl_init();
 
   actuators_init();
   uint8_t i;
-  for(i = 0; i < ACTUATORS_NB; i++) {
+  for (i = 0; i < ACTUATORS_NB; i++) {
     //SetServo(i, 1500);
   }
 
+  modules_init();
+
   mcu_int_enable();
-  sys_time_register_timer((1./PERIODIC_FREQUENCY), NULL);
+  sys_time_register_timer((1. / PERIODIC_FREQUENCY), NULL);
 }
 
 
-static inline void main_periodic( void ) {
+static inline void main_periodic(void)
+{
 
   // generated macro from airframe file
   AllActuatorsCommit();
 
   LED_PERIODIC();
   RunOnceEvery(100, {DOWNLINK_SEND_ALIVE(DefaultChannel, DefaultDevice,  16, MD5SUM);});
-  RunOnceEvery(300, DOWNLINK_SEND_ACTUATORS(DefaultChannel, DefaultDevice, ACTUATORS_NB, actuators ));
+  RunOnceEvery(300, DOWNLINK_SEND_ACTUATORS(DefaultChannel, DefaultDevice, ACTUATORS_NB, actuators));
+
+  modules_periodic_task();
 }
 
-static inline void main_event(void) {
-  DatalinkEvent();
+static inline void main_event(void)
+{
+  mcu_event();
+  pprz_dl_event();
+  modules_event_task();
 }
 
 
 #define IdOfMsg(x) (x[1])
 
-void dl_parse_msg( void ) {
-  uint8_t msg_id = IdOfMsg(dl_buffer);
+void dl_parse_msg(struct link_device *dev __attribute__((unused)), struct transport_tx *trans __attribute__((unused)), uint8_t *buf)
+{
+  uint8_t msg_id = IdOfMsg(buf);
   if (msg_id == DL_SET_ACTUATOR) {
-    uint8_t actuator_no = DL_SET_ACTUATOR_no(dl_buffer);
-    uint16_t actuator_value = DL_SET_ACTUATOR_value(dl_buffer);
+    uint8_t actuator_no = DL_SET_ACTUATOR_no(buf);
+    uint16_t actuator_value __attribute__((unused)) = DL_SET_ACTUATOR_value(buf);
     LED_TOGGLE(2);
 
     /* bad hack:
@@ -134,43 +159,43 @@ void dl_parse_msg( void ) {
     //}
   }
 #ifdef DlSetting
-  else if (msg_id == DL_SETTING && DL_SETTING_ac_id(dl_buffer) == AC_ID) {
-    uint8_t i = DL_SETTING_index(dl_buffer);
-    float val = DL_SETTING_value(dl_buffer);
+  else if (msg_id == DL_SETTING && DL_SETTING_ac_id(buf) == AC_ID) {
+    uint8_t i = DL_SETTING_index(buf);
+    float val = DL_SETTING_value(buf);
     DlSetting(i, val);
     LED_TOGGLE(2);
 
 #ifdef SERVO_0
-      ActuatorSet(0, actuators[SERVO_0_IDX];
+    ActuatorSet(0, actuators[SERVO_0_IDX]);
 #endif
 #ifdef SERVO_1
-      ActuatorSet(1, actuators[SERVO_1_IDX]);
+    ActuatorSet(1, actuators[SERVO_1_IDX]);
 #endif
 #ifdef SERVO_2
-      ActuatorSet(2, actuators[SERVO_2_IDX]);
+    ActuatorSet(2, actuators[SERVO_2_IDX]);
 #endif
 #ifdef SERVO_3
-      ActuatorSet(3, actuators[SERVO_3_IDX]);
+    ActuatorSet(3, actuators[SERVO_3_IDX]);
 #endif
 #ifdef SERVO_4
-      ActuatorSet(4, actuators[SERVO_4_IDX]);
+    ActuatorSet(4, actuators[SERVO_4_IDX]);
 #endif
 #ifdef SERVO_5
-      ActuatorSet(5, actuators[SERVO_5_IDX]);
+    ActuatorSet(5, actuators[SERVO_5_IDX]);
 #endif
 #ifdef SERVO_6
-      ActuatorSet(6, actuators[SERVO_6_IDX]);
+    ActuatorSet(6, actuators[SERVO_6_IDX]);
 #endif
 #ifdef SERVO_7
-      ActuatorSet(7, actuators[SERVO_7_IDX]);
+    ActuatorSet(7, actuators[SERVO_7_IDX]);
 #endif
 #ifdef SERVO_8
-      ActuatorSet(8, actuators[SERVO_8_IDX]);
+    ActuatorSet(8, actuators[SERVO_8_IDX]);
 #endif
 
     DOWNLINK_SEND_DL_VALUE(DefaultChannel, DefaultDevice, &i, &val);
-  } else if (msg_id == DL_GET_SETTING && DL_GET_SETTING_ac_id(dl_buffer) == AC_ID) {
-    uint8_t i = DL_GET_SETTING_index(dl_buffer);
+  } else if (msg_id == DL_GET_SETTING && DL_GET_SETTING_ac_id(buf) == AC_ID) {
+    uint8_t i = DL_GET_SETTING_index(buf);
     float val = settings_get_value(i);
     DOWNLINK_SEND_DL_VALUE(DefaultChannel, DefaultDevice, &i, &val);
   }

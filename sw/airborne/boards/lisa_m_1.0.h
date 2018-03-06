@@ -19,9 +19,9 @@
 #define LED_1_GPIO_ON gpio_clear
 #define LED_1_GPIO_OFF gpio_set
 #define LED_1_AFIO_REMAP {                            \
-  rcc_periph_clock_enable(RCC_AFIO);                  \
-  AFIO_MAPR |= AFIO_MAPR_SWJ_CFG_FULL_SWJ_NO_JNTRST;  \
-}
+    rcc_periph_clock_enable(RCC_AFIO);                  \
+    AFIO_MAPR |= AFIO_MAPR_SWJ_CFG_FULL_SWJ_NO_JNTRST;  \
+  }
 
 /* blue */
 #ifndef USE_LED_2
@@ -69,6 +69,12 @@
 #define LED_BODY_GPIO_OFF gpio_clear
 #define LED_BODY_AFIO_REMAP ((void)0)
 
+/*
+ * Spektrum
+ */
+/* The line that is pulled low at power up to initiate the bind process */
+#define SPEKTRUM_BIND_PIN GPIO3
+#define SPEKTRUM_BIND_PIN_PORT GPIOC
 
 /* Default actuators driver */
 #define DEFAULT_ACTUATORS "subsystems/actuators/actuators_pwm.h"

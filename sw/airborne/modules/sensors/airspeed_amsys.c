@@ -1,6 +1,7 @@
 /*
  * Driver for a Amsys Differential Presure Sensor I2C
  * AMS 5812-0003-D
+ * AMS 5812-0001-D
  *
  * Copyright (C) 2010 The Paparazzi Team
  *
@@ -26,7 +27,7 @@
 #include "state.h"
 #include "mcu_periph/i2c.h"
 #include "mcu_periph/uart.h"
-#include "messages.h"
+#include "pprzlink/messages.h"
 #include "subsystems/datalink/downlink.h"
 #include <math.h>
 //#include <stdlib.h>
@@ -42,7 +43,7 @@
 #define AIRSPEED_AMSYS_OFFSET_NBSAMPLES_AVRG 60
 #define AIRSPEED_AMSYS_NBSAMPLES_AVRG 10
 #ifndef AIRSPEED_AMSYS_MAXPRESURE
-#define AIRSPEED_AMSYS_MAXPRESURE 2068 //003-2068, 001-689 //Pascal
+#define AIRSPEED_AMSYS_MAXPRESURE 2068 //003-2068, 001-1034 //Pascal
 #endif
 #ifndef AIRSPEED_AMSYS_FILTER
 #define AIRSPEED_AMSYS_FILTER 0
@@ -53,15 +54,23 @@
 #ifdef MEASURE_AMSYS_TEMPERATURE
 #define TEMPERATURE_AMSYS_OFFSET_MAX 29491
 #define TEMPERATURE_AMSYS_OFFSET_MIN 3277
-#define TEMPERATURE_AMSYS_MAX 110
+#define TEMPERATURE_AMSYS_MAX 85
 #define TEMPERATURE_AMSYS_MIN -25
 #endif
+
+#ifndef USE_AIRSPEED_AMSYS
+#if USE_AIRSPEED
+#define USE_AIRSPEED_AMSYS TRUE
+PRINT_CONFIG_MSG("USE_AIRSPEED_AMSYS automatically set to TRUE")
+#endif
+#endif
+
 
 
 // Global variables
 uint16_t airspeed_amsys_raw;
 uint16_t tempAS_amsys_raw;
-bool_t airspeed_amsys_valid;
+bool airspeed_amsys_valid;
 float airspeed_amsys_offset;
 float airspeed_amsys_tmp;
 float airspeed_amsys_p; //Pascal
@@ -71,32 +80,34 @@ float airspeed_filter;
 struct i2c_transaction airspeed_amsys_i2c_trans;
 
 // Local variables
-volatile bool_t airspeed_amsys_i2c_done;
+volatile bool airspeed_amsys_i2c_done;
 float airspeed_temperature = 0.0;
 float airspeed_old = 0.0;
-bool_t airspeed_amsys_offset_init;
+bool airspeed_amsys_offset_init;
 double airspeed_amsys_offset_tmp;
 uint16_t airspeed_amsys_cnt;
 
 void airspeed_amsys_downlink(void);
 
-void airspeed_amsys_init( void ) {
+void airspeed_amsys_init(void)
+{
   airspeed_amsys_raw = 0;
   airspeed_amsys = 0.0;
   airspeed_amsys_p = 0.0;
   airspeed_amsys_offset = 0;
   airspeed_amsys_offset_tmp = 0;
-  airspeed_amsys_i2c_done = TRUE;
-  airspeed_amsys_valid = TRUE;
-  airspeed_amsys_offset_init = FALSE;
+  airspeed_amsys_i2c_done = true;
+  airspeed_amsys_valid = true;
+  airspeed_amsys_offset_init = false;
   airspeed_scale = AIRSPEED_AMSYS_SCALE;
   airspeed_filter = AIRSPEED_AMSYS_FILTER;
   airspeed_amsys_i2c_trans.status = I2CTransDone;
   airspeed_amsys_cnt = AIRSPEED_AMSYS_OFFSET_NBSAMPLES_INIT +
-    AIRSPEED_AMSYS_OFFSET_NBSAMPLES_AVRG;
+                       AIRSPEED_AMSYS_OFFSET_NBSAMPLES_AVRG;
 }
 
-void airspeed_amsys_read_periodic( void ) {
+void airspeed_amsys_read_periodic(void)
+{
 #ifndef SITL
   if (airspeed_amsys_i2c_trans.status == I2CTransDone) {
 #ifndef MEASURE_AMSYS_TEMPERATURE
@@ -106,13 +117,13 @@ void airspeed_amsys_read_periodic( void ) {
 #endif
   }
 
-#if USE_AIRSPEED
-    stateSetAirspeed_f(&airspeed_amsys);
+#if USE_AIRSPEED_AMSYS
+  stateSetAirspeed_f(airspeed_amsys);
 #endif
 
 #elif !defined USE_NPS
-    extern float sim_air_speed;
-    stateSetAirspeed_f(&sim_air_speed);
+  extern float sim_air_speed;
+  stateSetAirspeed_f(sim_air_speed);
 #endif //SITL
 
 
@@ -121,46 +132,51 @@ void airspeed_amsys_read_periodic( void ) {
 #endif
 }
 
-void airspeed_amsys_downlink(void) {
+void airspeed_amsys_downlink(void)
+{
   DOWNLINK_SEND_AMSYS_AIRSPEED(DefaultChannel, DefaultDevice,
                                &airspeed_amsys_raw, &airspeed_amsys_p,
                                &airspeed_amsys_tmp, &airspeed_amsys,
                                &airspeed_temperature);
 }
 
-void airspeed_amsys_read_event( void ) {
+void airspeed_amsys_read_event(void)
+{
 
   // Get raw airspeed from buffer
   airspeed_amsys_raw = 0;
-  airspeed_amsys_raw = (airspeed_amsys_i2c_trans.buf[0]<<8) | airspeed_amsys_i2c_trans.buf[1];
+  airspeed_amsys_raw = (airspeed_amsys_i2c_trans.buf[0] << 8) | airspeed_amsys_i2c_trans.buf[1];
 #ifdef MEASURE_AMSYS_TEMPERATURE
-  tempAS_amsys_raw = (airspeed_amsys_i2c_trans.buf[2]<<8) | airspeed_amsys_i2c_trans.buf[3];
-  const float temp_off_scale = (float)(TEMPERATURE_AMSYS_MAX) /
-    (TEMPERATURE_AMSYS_OFFSET_MAX - TEMPERATURE_AMSYS_OFFSET_MIN);
+  tempAS_amsys_raw = (airspeed_amsys_i2c_trans.buf[2] << 8) | airspeed_amsys_i2c_trans.buf[3];
+  const float temp_off_scale = (float)(TEMPERATURE_AMSYS_MAX - TEMPERATURE_AMSYS_MIN) /
+                               (TEMPERATURE_AMSYS_OFFSET_MAX - TEMPERATURE_AMSYS_OFFSET_MIN);
   // Tmin=-25, Tmax=85
   airspeed_temperature = temp_off_scale * (tempAS_amsys_raw - TEMPERATURE_AMSYS_OFFSET_MIN) +
-    TEMPERATURE_AMSYS_MIN;
+                         TEMPERATURE_AMSYS_MIN;
 #endif
 
   // Check if this is valid airspeed
-  if (airspeed_amsys_raw == 0)
-    airspeed_amsys_valid = FALSE;
-  else
-    airspeed_amsys_valid = TRUE;
+  if (airspeed_amsys_raw == 0) {
+    airspeed_amsys_valid = false;
+  } else {
+    airspeed_amsys_valid = true;
+  }
 
   // Continue only if a new airspeed value was received
   if (airspeed_amsys_valid) {
 
     // raw not under offest min
-    if (airspeed_amsys_raw < AIRSPEED_AMSYS_OFFSET_MIN)
+    if (airspeed_amsys_raw < AIRSPEED_AMSYS_OFFSET_MIN) {
       airspeed_amsys_raw = AIRSPEED_AMSYS_OFFSET_MIN;
+    }
     // raw not over offest max
-    if (airspeed_amsys_raw > AIRSPEED_AMSYS_OFFSET_MAX)
+    if (airspeed_amsys_raw > AIRSPEED_AMSYS_OFFSET_MAX) {
       airspeed_amsys_raw = AIRSPEED_AMSYS_OFFSET_MAX;
+    }
 
     // calculate raw to pressure
     const float p_off_scale = (float)(AIRSPEED_AMSYS_MAXPRESURE) /
-      (AIRSPEED_AMSYS_OFFSET_MAX - AIRSPEED_AMSYS_OFFSET_MIN);
+                              (AIRSPEED_AMSYS_OFFSET_MAX - AIRSPEED_AMSYS_OFFSET_MIN);
     airspeed_amsys_p = p_off_scale * (airspeed_amsys_raw - AIRSPEED_AMSYS_OFFSET_MIN);
 
     if (!airspeed_amsys_offset_init) {
@@ -169,7 +185,7 @@ void airspeed_amsys_read_event( void ) {
       if (airspeed_amsys_cnt == 0) {
         // Calculate average
         airspeed_amsys_offset = airspeed_amsys_offset_tmp / AIRSPEED_AMSYS_OFFSET_NBSAMPLES_AVRG;
-        airspeed_amsys_offset_init = TRUE;
+        airspeed_amsys_offset_init = true;
       }
       // Check if averaging needs to continue
       else if (airspeed_amsys_cnt <= AIRSPEED_AMSYS_OFFSET_NBSAMPLES_AVRG) {
@@ -178,21 +194,21 @@ void airspeed_amsys_read_event( void ) {
 
       airspeed_amsys = 0.;
 
-    }
-    else {
+    } else {
       airspeed_amsys_p =  airspeed_amsys_p - airspeed_amsys_offset;
-      if (airspeed_amsys_p <= 0)
+      if (airspeed_amsys_p <= 0) {
         airspeed_amsys_p = 0.000000001;
+      }
       // convert pressure to airspeed
       airspeed_amsys_tmp = sqrtf(2 * airspeed_amsys_p * airspeed_scale / 1.2041);
       // Lowpassfiltering
       airspeed_amsys = airspeed_filter * airspeed_old +
-        (1.0 - airspeed_filter) * airspeed_amsys_tmp;
+                       (1.0 - airspeed_filter) * airspeed_amsys_tmp;
       airspeed_old = airspeed_amsys;
 
       //New value available
 #if USE_AIRSPEED
-      stateSetAirspeed_f(&airspeed_amsys);
+      stateSetAirspeed_f(airspeed_amsys);
 #endif
 #ifdef AIRSPEED_AMSYS_SYNC_SEND
       airspeed_amsys_downlink();

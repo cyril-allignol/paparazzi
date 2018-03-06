@@ -34,8 +34,8 @@
  * Accelerometer
  */
 /* navdata has 12 bit resolution */
-#define NPS_ACCEL_MIN -2047
-#define NPS_ACCEL_MAX  2047
+#define NPS_ACCEL_MIN  0
+#define NPS_ACCEL_MAX  4095
 /* ms-2 */
 /* aka 2^10/ACCEL_X_SENS  */
 #define NPS_ACCEL_SENSITIVITY_XX  ACCEL_BFP_OF_REAL(1./IMU_ACCEL_X_SENS)
@@ -126,6 +126,13 @@
 #define NPS_BARO_SENSITIVITY     4.0
 #define NPS_BARO_DT              (1./5.)
 #define NPS_BARO_NOISE_STD_DEV   5.e-2
+
+/*
+ * Sonar (distance to ground in meters)
+ */
+#define NPS_SONAR_DT             (1./10.)
+#define NPS_SONAR_NOISE_STD_DEV  0.01
+
 
 /*
  *  GPS

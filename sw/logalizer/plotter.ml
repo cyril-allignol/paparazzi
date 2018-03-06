@@ -34,13 +34,13 @@ let set_float_value = fun (a:GData.adjustment) v ->
   a#set_value v
 
 let pprz_float = function
-    Pprz.Int i -> float i
-  | Pprz.Float f -> f
-  | Pprz.Int32 i -> Int32.to_float i
-  | Pprz.Int64 i -> Int64.to_float i
-  | Pprz.String s -> float_of_string s
-  | Pprz.Char c -> float_of_string (String.make 1 c)
-  | Pprz.Array _ -> 0.
+    PprzLink.Int i -> float i
+  | PprzLink.Float f -> f
+  | PprzLink.Int32 i -> Int32.to_float i
+  | PprzLink.Int64 i -> Int64.to_float i
+  | PprzLink.String s -> float_of_string s
+  | PprzLink.Char c -> float_of_string (String.make 1 c)
+  | PprzLink.Array _ -> 0.
 
 
 let dnd_targets = [ { Gtk.target = "STRING"; flags = []; info = 0} ]
@@ -52,8 +52,8 @@ let parse_dnd =
     | [s; c; m; f; factor] -> (s, c, m, f, Ocaml_tools.affine_transform factor)
     | _ -> failwith (Printf.sprintf "parse_dnd: %s" s)
 
-
-let colors = [|"red"; "blue"; "green"; "orange"; "purple"; "magenta"|]
+(* since tcl8.6 "green" refers to "darkgreen" and the former "green" is now "lime", but that is not available in older versions, so hardcode the color to #00ff00*)
+let colors = [|"red"; "blue"; "#00ff00"; "orange"; "purple"; "magenta"|]
 
 let labelled_entry = fun ?width_chars text value (h:GPack.box) ->
   let label = GMisc.label ~text ~packing:h#pack () in
@@ -69,7 +69,7 @@ type values = {
   }
 
 let create_values = fun size color ->
-  { array = Array.create size None; index = 0; color = color;
+  { array = Array.make size None; index = 0; color = color;
     average = GData.adjustment ~value:0. (); discrete = false;
     stdev = GData.adjustment ~value:0. ()}
 
@@ -135,7 +135,7 @@ class plot = fun ~size ~update_time ~width ~height ~packing () ->
     method set_size = fun new_size ->
       if new_size <> size && new_size > 0 then begin
         Hashtbl.iter (fun _ a ->
-          let new_array = Array.create new_size None in
+          let new_array = Array.make new_size None in
           for i = 0 to Pervasives.min size new_size - 1 do
             new_array.(new_size - 1 - i) <- a.array.((a.index-i+size) mod size)
           done;
@@ -282,11 +282,11 @@ class plot = fun ~size ~update_time ~width ~height ~packing () ->
                 dr#set_foreground (`NAME a.color);
                 dr#lines !curve;
               end;
-              let fn = float !n in
+              (*let fn = float !n in
               let avg = !sum /. fn in
               let stdev = sqrt ((!sum_squares -. fn *. avg *. avg) /. fn) in
               set_float_value a.average avg;
-              set_float_value a.stdev stdev;
+              set_float_value a.stdev stdev;*)
 
               (* Title *)
               Pango.Layout.set_text layout title;
@@ -324,9 +324,9 @@ class plot = fun ~size ~update_time ~width ~height ~packing () ->
 let update_time = ref 0.5
 let size = ref 500
 
-type window = { title : string; geometry : string; update : float; size : int; curves : string list }
+type window = { title : string; geometry : string; update : float; size : int; curves : string list; consts : string list }
 
-let default_window = {title="Plotter"; geometry=""; update= !update_time; size= !size; curves=[]; }
+let default_window = {title="Plotter"; geometry=""; update= !update_time; size= !size; curves=[]; consts=[]; }
 
 
 (** [index_of_fields s] Returns i if s matches x[i] else 0. *)
@@ -350,7 +350,7 @@ let rec plot_window = fun window ->
   Hashtbl.add windows oid [];
 
   ignore (plotter#parse_geometry window.geometry);
-  plotter#set_icon (Some (GdkPixbuf.from_file Env.icon_file));
+  plotter#set_icon (Some (GdkPixbuf.from_file Env.icon_rtp_file));
   let vbox = GPack.vbox ~packing:plotter#add () in
   let menubar = GMenu.menu_bar ~packing:vbox#pack () in
   let factory = new GMenu.factory menubar in
@@ -467,6 +467,13 @@ let rec plot_window = fun window ->
     ignore (discrete_item#connect#toggled ~callback);
 
     (* Average *)
+    (* on Ubuntu 14.04 with Unity: updating the menu often results in high CPU and memory usage of `hud-service`,
+       even to the point where the PC becomes unusable, so we disable these updates:
+       https://github.com/paparazzi/paparazzi/issues/1446
+       Also the images/labels are currently not displayed anymore anyway:
+       https://github.com/paparazzi/paparazzi/issues/1445 *)
+    (*
+    (* Average *)
     let average_value = GMisc.label ~text:"N/A" () in
     let _avg_item = submenu_fact#add_image_item ~image:average_value#coerce ~label:"Average" () in
     let update_avg_item = fun () ->
@@ -479,6 +486,9 @@ let rec plot_window = fun window ->
     let update_stdev_value = fun () ->
       stdev_value#set_text (sprintf "%.6f" curve.stdev#value) in
     ignore (curve.stdev#connect#value_changed update_stdev_value)
+    *)
+
+    ()
   in
 
   let add_curve = fun ?(factor=(1.,0.)) name ->
@@ -490,14 +500,14 @@ let rec plot_window = fun window ->
     let cb = fun _sender values ->
       let (field_name, index) = base_and_index field_descr in
       let value =
-        match Pprz.assoc field_name values with
-          Pprz.Array array -> array.(index)
+        match PprzLink.assoc field_name values with
+          PprzLink.Array array -> array.(index)
         | scalar -> scalar in
       let float = pprz_float value in
       let v = float *. a +. b in
       plot#add_value name v in
 
-    let module P = Pprz.Messages (struct let name = class_name end) in
+    let module P = PprzLink.Messages (struct let name = class_name end) in
     let binding =
       if sender = "*" then
         P.message_bind msg_name cb
@@ -517,7 +527,28 @@ let rec plot_window = fun window ->
     let factor =  Ocaml_tools.affine_transform factor#text in
     try
       let name = data#data in
-      add_curve ~factor name
+      let (sender, class_name, msg_name, field_descr, (a',b')) = parse_dnd name in
+      (* test if several curves need to be added with x[min-max] format *)
+      if Str.string_match (Str.regexp "\\([^\\.]+\\)\\[\\([0-9]+\\)-\\([0-9]+\\)\\]") field_descr 0 then
+        begin
+          (* get name and range in correct order *)
+          let field_name = Str.matched_group 1 field_descr
+          and min_range = int_of_string (Str.matched_group 2 field_descr)
+          and max_range = int_of_string (Str.matched_group 3 field_descr) in
+          let min_range, max_range = if min_range > max_range then
+            max_range, min_range
+          else
+            min_range, max_range
+          in
+          (* add all curves *)
+          for i = min_range to max_range do
+            let offset = if a' <> 0. then sprintf "+%.2f" b' else "" in
+            let name = (sprintf "%s:%s:%s:%s[%d]:%f%s" sender class_name msg_name field_name i a' offset) in
+            add_curve ~factor name
+          done
+        end
+      else
+        add_curve ~factor name
     with
       exc -> prerr_endline (Printexc.to_string exc)
     in
@@ -526,6 +557,8 @@ let rec plot_window = fun window ->
 
   (* Init curves *)
   List.iter add_curve window.curves;
+  (* Init consts *)
+  List.iter add_cst window.consts;
 
   plotter#add_accel_group accel_group;
   plotter#show ()
@@ -540,7 +573,8 @@ let _ =
   let add_init = fun s ->
     match !init with
       [] -> failwith "unreachable"
-    | x::xs -> init := {x with curves = s::x.curves} :: xs in
+    | x::xs -> init := try ignore (float_of_string s); {x with consts = s::x.consts} :: xs with
+                       | Failure _ -> {x with curves = s::x.curves} :: xs in
 
   let set_title = fun s ->
     match !init with
@@ -554,7 +588,7 @@ let _ =
 
   Arg.parse
     [ "-b", Arg.String (fun x -> ivy_bus := x), (sprintf "<ivy bus> Default is %s" !ivy_bus);
-      "-c", Arg.String (fun x -> add_init x), "<curve>  Add a curve (e.g. '*:telemetry:BAT:voltage'). The curve is inserted into the last open window (cf -n option)";
+      "-c", Arg.String (fun x -> add_init x), "<curve>  Add a curve (e.g. '*:telemetry:BAT:voltage') or constant (e.g. '1.5'). The curve is inserted into the last open window (cf -n option)";
 
       (* no code yet *)
       "-t", Arg.String set_title, "<title>  Set the last opened window title (cf -n option)";

@@ -1,5 +1,5 @@
 (*
- * Syntax of expressions à la C
+ * Syntax of expressions ï¿½ la C
  *
  * Copyright (C) 2003-2010 Antoine Drouin, Pascal Brisset, ENAC
  *
@@ -24,6 +24,7 @@
 
 open Printf
 
+
 type ident = string
 
 type operator = string
@@ -45,7 +46,7 @@ let sprint = fun ?call_assoc expr ->
   | Some (n, l) -> Some n, l
   in
   let rec eval = function
-    | Ident i when i.[0] = '$' -> sprintf "%s" (c_var_of_ident (String.sub i 1 (String.length i - 1)))
+    | Ident i when i.[0] = '$' -> sprintf "%s" (c_var_of_ident (Compat.bytes_sub i 1 (Compat.bytes_length i - 1)))
     | Ident i -> sprintf "%s" i
     | Int i -> sprintf "%d" i
     | Float i -> sprintf "%f" i
@@ -55,11 +56,11 @@ let sprint = fun ?call_assoc expr ->
         sprintf "%s(%s)" op (eval e1)
     | CallOperator (_,_) -> failwith "Operator should be binary or unary"
     | Call (i, [Ident s]) when Some i = n ->
-        let index = try List.assoc s l with Not_found -> failwith (sprintf "Unknown block: '%s'" s) in
+        let index = try List.assoc s l with Not_found -> failwith (sprintf "Expr_syntax call_assoc not found: '%s'" s) in
         sprintf "%d" index
     | Call (i, es) ->
         let ses = List.map eval es in
-        sprintf "%s(%s)" i (String.concat "," ses)
+        sprintf "%s(%s)" i (Compat.bytes_concat "," ses)
     | Index (i,e) -> sprintf "%s[%s]" i (eval e)
     | Field (i,f) -> sprintf "%s.%s" i f
     | Deref (e,f) -> sprintf "(%s)->%s" (eval e) f

@@ -27,12 +27,9 @@
 
 #include "modules/sensors/mag_hmc58xx.h"
 #include "mcu_periph/uart.h"
-#include "messages.h"
+#include "pprzlink/messages.h"
 #include "subsystems/datalink/downlink.h"
-
-#if MODULE_HMC58XX_UPDATE_AHRS
-#include "subsystems/imu.h"
-#include "subsystems/ahrs.h"
+#include "generated/airframe.h"
 
 #ifndef HMC58XX_CHAN_X
 #define HMC58XX_CHAN_X 0
@@ -43,53 +40,95 @@
 #ifndef HMC58XX_CHAN_Z
 #define HMC58XX_CHAN_Z 2
 #endif
+#ifndef HMC58XX_CHAN_X_SIGN
+#define HMC58XX_CHAN_X_SIGN +
+#endif
+#ifndef HMC58XX_CHAN_Y_SIGN
+#define HMC58XX_CHAN_Y_SIGN +
+#endif
+#ifndef HMC58XX_CHAN_Z_SIGN
+#define HMC58XX_CHAN_Z_SIGN +
+#endif
 
+#if MODULE_HMC58XX_UPDATE_AHRS
+#include "subsystems/imu.h"
+#include "subsystems/abi.h"
+
+#if defined HMC58XX_MAG_TO_IMU_PHI && defined HMC58XX_MAG_TO_IMU_THETA && defined HMC58XX_MAG_TO_IMU_PSI
+#define USE_MAG_TO_IMU 1
+static struct Int32RMat mag_to_imu; ///< rotation from mag to imu frame
+#else
+#define USE_MAG_TO_IMU 0
+#endif
 #endif
 
 struct Hmc58xx mag_hmc58xx;
 
-void mag_hmc58xx_module_init(void) {
+void mag_hmc58xx_module_init(void)
+{
   hmc58xx_init(&mag_hmc58xx, &(MAG_HMC58XX_I2C_DEV), HMC58XX_ADDR);
+
+#if MODULE_HMC58XX_UPDATE_AHRS && USE_MAG_TO_IMU
+  struct Int32Eulers mag_to_imu_eulers = {
+    ANGLE_BFP_OF_REAL(HMC58XX_MAG_TO_IMU_PHI),
+    ANGLE_BFP_OF_REAL(HMC58XX_MAG_TO_IMU_THETA),
+    ANGLE_BFP_OF_REAL(HMC58XX_MAG_TO_IMU_PSI)
+  };
+  int32_rmat_of_eulers(&mag_to_imu, &mag_to_imu_eulers);
+#endif
 }
 
-void mag_hmc58xx_module_periodic(void) {
+void mag_hmc58xx_module_periodic(void)
+{
   hmc58xx_periodic(&mag_hmc58xx);
 }
 
-void mag_hmc58xx_module_event(void) {
+void mag_hmc58xx_module_event(void)
+{
   hmc58xx_event(&mag_hmc58xx);
-#if MODULE_HMC58XX_UPDATE_AHRS
+
   if (mag_hmc58xx.data_available) {
+#if MODULE_HMC58XX_UPDATE_AHRS
+    // current timestamp
+    uint32_t now_ts = get_sys_time_usec();
+
     // set channel order
     struct Int32Vect3 mag = {
-      (int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_X]),
-      (int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Y]),
-      (int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Z])
+      HMC58XX_CHAN_X_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_X]),
+      HMC58XX_CHAN_Y_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Y]),
+      HMC58XX_CHAN_Z_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Z])
     };
+    // only rotate if needed
+#if USE_MAG_TO_IMU
+    struct Int32Vect3 imu_mag;
+    // rotate data from mag frame to imu frame
+    int32_rmat_vmult(&imu_mag, &mag_to_imu, &mag);
+    // unscaled vector
+    VECT3_COPY(imu.mag_unscaled, imu_mag);
+#else
     // unscaled vector
     VECT3_COPY(imu.mag_unscaled, mag);
+#endif
     // scale vector
-    ImuScaleMag(imu);
-    // update ahrs
-    if (ahrs.status == AHRS_RUNNING) {
-      ahrs_update_mag();
-    }
-    mag_hmc58xx.data_available = FALSE;
-  }
+    imu_scale_mag(&imu);
+
+    AbiSendMsgIMU_MAG_INT32(MAG_HMC58XX_SENDER_ID, now_ts, &imu.mag);
 #endif
 #if MODULE_HMC58XX_SYNC_SEND
-  if (mag_hmc58xx.data_available) {
     mag_hmc58xx_report();
-    mag_hmc58xx.data_available = FALSE;
-  }
 #endif
+#if MODULE_HMC58XX_UPDATE_AHRS ||  MODULE_HMC58XX_SYNC_SEND
+    mag_hmc58xx.data_available = false;
+#endif
+  }
 }
 
-void mag_hmc58xx_report(void) {
+void mag_hmc58xx_report(void)
+{
   struct Int32Vect3 mag = {
-    (int32_t)(mag_hmc58xx.data.vect.x),
-    (int32_t)(mag_hmc58xx.data.vect.y),
-    (int32_t)(mag_hmc58xx.data.vect.z)
+    HMC58XX_CHAN_X_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_X]),
+    HMC58XX_CHAN_Y_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Y]),
+    HMC58XX_CHAN_Z_SIGN(int32_t)(mag_hmc58xx.data.value[HMC58XX_CHAN_Z])
   };
   DOWNLINK_SEND_IMU_MAG_RAW(DefaultChannel, DefaultDevice, &mag.x, &mag.y, &mag.z);
 }

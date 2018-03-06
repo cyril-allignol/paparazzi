@@ -50,17 +50,17 @@
 
 extern uint16_t baro_ets_adc;
 extern uint16_t baro_ets_offset;
-extern bool_t baro_ets_valid;
-extern bool_t baro_ets_enabled;
+extern bool baro_ets_valid;
+extern bool baro_ets_enabled;
 extern float baro_ets_altitude;
 extern float baro_ets_r;
 extern float baro_ets_sigma2;
 
 extern struct i2c_transaction baro_ets_i2c_trans;
 
-extern void baro_ets_init( void );
-extern void baro_ets_read_periodic( void );
-extern void baro_ets_read_event( void );
+extern void baro_ets_init(void);
+extern void baro_ets_read_periodic(void);
+extern void baro_ets_read_event(void);
 
 #define BaroEtsEvent() { if (baro_ets_i2c_trans.status == I2CTransSuccess) baro_ets_read_event(); }
 

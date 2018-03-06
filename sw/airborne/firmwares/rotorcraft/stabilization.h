@@ -30,12 +30,8 @@
 
 #include "generated/airframe.h"
 
-#include "firmwares/rotorcraft/stabilization/stabilization_none.h"
-#include "firmwares/rotorcraft/stabilization/stabilization_rate.h"
-#include "firmwares/rotorcraft/stabilization/stabilization_attitude.h"
-
-
 extern void stabilization_init(void);
+extern void stabilization_filter_commands(void);
 
 /** Stabilization commands.
  *  Contains the resulting stabilization commands,

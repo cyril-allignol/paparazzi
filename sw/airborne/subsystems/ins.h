@@ -32,33 +32,11 @@
 #include "math/pprz_algebra_float.h"
 #include "state.h"
 
-enum InsStatus {
- INS_UNINIT=0,
- INS_RUNNING=1
-};
-
 /* underlying includes (needed for parameters) */
 #ifdef INS_TYPE_H
 #include INS_TYPE_H
 #endif
 
-/** Inertial Navigation System state */
-struct Ins {
-  enum InsStatus status;     ///< status of the INS
-};
-
-/** global INS state */
-extern struct Ins ins;
-
-/** INS initialization. Called at startup.
- *  Needs to be implemented by each INS algorithm.
- */
-extern void ins_init(void);
-
-/** INS periodic call.
- *  Does nothing if not implemented by specific INS algorithm.
- */
-extern void ins_periodic(void);
 
 /** INS local origin reset.
  *  Reset horizontal and vertical reference to the current position.
@@ -73,23 +51,15 @@ extern void ins_reset_local_origin(void);
 extern void ins_reset_altitude_ref(void);
 
 /** INS utm zone reset.
- *  Reset UTM zone according te the actual position.
+ *  Reset UTM zone according the the actual position.
  *  Only used with fixedwing firmware.
  *  Can be overwritte by specifc INS implementation.
  *  @param utm initial utm zone, returns the corrected utm position
  */
-extern void ins_reset_utm_zone(struct UtmCoor_f * utm);
+extern void ins_reset_utm_zone(struct UtmCoor_f *utm);
 
-/** Propagation. Usually integrates the gyro rates to angles.
- *  Reads the global #imu data struct.
- *  Does nothing if not implemented by specific INS algorithm.
- */
-extern void ins_propagate(void);
+/** initialize the local origin (ltp_def in fixed point) from flight plan position */
+extern void ins_init_origin_i_from_flightplan(struct LtpDef_i *ltp_def);
 
-/** Update INS state with GPS measurements.
- *  Reads the global #gps data struct.
- *  Does nothing if not implemented by specific INS algorithm.
- */
-extern void ins_update_gps(void);
 
 #endif /* INS_H */

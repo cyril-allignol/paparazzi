@@ -27,15 +27,16 @@
 #include "subsystems/imu.h"
 #include "subsystems/electrical.h"
 
-#include "messages.h"
+#include "pprzlink/messages.h"
 #include "mcu_periph/uart.h"
 #include "subsystems/datalink/downlink.h"
 
-void send_imu_mag_current(void) {
+void send_imu_mag_current(void)
+{
   DOWNLINK_SEND_IMU_MAG_CURRENT_CALIBRATION(DefaultChannel, DefaultDevice,
-                                            &imu.mag_unscaled.x,
-                                            &imu.mag_unscaled.y,
-                                            &imu.mag_unscaled.z,
-                                            &electrical.current);
+      &imu.mag_unscaled.x,
+      &imu.mag_unscaled.y,
+      &imu.mag_unscaled.z,
+      &electrical.current);
 }
 

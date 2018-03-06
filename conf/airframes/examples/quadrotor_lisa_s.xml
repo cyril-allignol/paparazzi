@@ -1,4 +1,25 @@
-<!-- this is a quadrocopter frame equiped with Lisa/S 0.1 and generic china pwm motor controllers -->
+<!-- this is a quadrocopter frame equiped with Lisa/S 1.0 and generic china pwm motor controllers -->
+
+<!--
+     The configuration of the quadrotor looking from the top is the following:
+
+           Front
+             ^
+             |
+
+          Motor5
+            CW
+             |
+             |
+           ,___,
+    Motor4 |   |  Motor1
+     CCW===|   |===CCW
+           |___|
+             |
+             |
+            CW
+          Motor0
+-->
 
 <!--
      Applicable configuration:
@@ -6,7 +27,7 @@
      radio="radios/cockpitSX.xml"
      telemetry="telemetry/default_rotorcraft.xml"
      flight_plan="flight_plans/rotorcraft_basic.xml"
-     settings="settings/rotorcraft_basic.xml settings/control/rotorcraft_guidance.xml settings/control/stabilization_att_int.xml settings/control/stabilization_rate.xml"
+     settings="settings/rotorcraft_basic.xml settings/control/rotorcraft_guidance.xml settings/control/stabilization_att_int.xml"
 -->
 
 <airframe name="quadrotor_lisa_s">
@@ -26,7 +47,7 @@
   </commands>
 
   <command_laws>
-    <call fun="motor_mixing_run(autopilot_motors_on,FALSE,values)"/>
+    <call fun="motor_mixing_run(autopilot_get_motors_on(),FALSE,values)"/>
     <set servo="FRONT" value="motor_mixing.commands[0]"/>
     <set servo="BACK" value="motor_mixing.commands[1]"/>
     <set servo="LEFT" value="motor_mixing.commands[2]"/>
@@ -84,19 +105,6 @@
  </section>
 
 
-  <section name="STABILIZATION_RATE" prefix="STABILIZATION_RATE_">
-    <define name="SP_MAX_P" value="15000"/>
-    <define name="SP_MAX_Q" value="15000"/>
-    <define name="SP_MAX_R" value="15000"/>
-
-    <define name="GAIN_P" value="400"/>
-    <define name="GAIN_Q" value="400"/>
-    <define name="GAIN_R" value="418"/>
-
-    <define name="IGAIN_P" value="301"/>
-    <define name="IGAIN_Q" value="302"/>
-    <define name="IGAIN_R" value="303"/>
-  </section>
 
   <section name="STABILIZATION_ATTITUDE" prefix="STABILIZATION_ATTITUDE_">
 
@@ -150,11 +158,6 @@
   </section>
 
  <section name="GUIDANCE_V" prefix="GUIDANCE_V_">
-   <define name="MIN_ERR_Z" value="POS_BFP_OF_REAL(-10.)"/>
-   <define name="MAX_ERR_Z" value="POS_BFP_OF_REAL( 10.)"/>
-   <define name="MIN_ERR_ZD" value="SPEED_BFP_OF_REAL(-10.)"/>
-   <define name="MAX_ERR_ZD" value="SPEED_BFP_OF_REAL( 10.)"/>
-   <define name="MAX_SUM_ERR" value="2000000"/>
    <define name="HOVER_KP" value="276"/>
    <define name="HOVER_KD" value="455"/>
    <define name="HOVER_KI" value="100"/>
@@ -173,51 +176,49 @@
    <define name="IGAIN" value="19"/>
  </section>
 
- <section name="MISC">
-   <define name="FACE_REINJ_1" value="1024"/>
- </section>
-
  <section name="SIMULATOR" prefix="NPS_">
-   <define name="ACTUATOR_NAMES" value="{&quot;front_motor&quot;, &quot;back_motor&quot;, &quot;right_motor&quot;, &quot;left_motor&quot;}"/>
-   <define name="JSBSIM_INIT" value="&quot;reset00&quot;"/>
-   <define name="JSBSIM_MODEL" value="&quot;simple_quad&quot;"/>
-   <define name="SENSORS_PARAMS" value="&quot;nps_sensors_params_booz2_a1.h&quot;"/>
+   <define name="ACTUATOR_NAMES" value="front_motor, back_motor, left_motor, right_motor" type="string[]"/>
+   <define name="JSBSIM_MODEL" value="simple_quad" type="string"/>
+   <define name="SENSORS_PARAMS" value="nps_sensors_params_default.h" type="string"/>
  </section>
 
  <modules main_freq="512">
-   <load name="gps_ubx_ucenter.xml"/>
-   <load name="send_imu_mag_current.xml"/>
+   <module name="gps" type="ubx_ucenter"/>
+   <module name="send_imu_mag_current"/>
  </modules>
 
   <firmware name="rotorcraft">
-    <target name="ap" board="lisa_s_0.1">
-      <subsystem name="radio_control" type="superbitrf_rc">
-        <define name="RADIO_TRANSMITTER_ID" value="2008496626"/> <!-- TUDelft Dx6i: TX 4 -->
-        <define name="RADIO_TRANSMITTER_CHAN" value="6"/>
-        <define name="RADIO_TRANSMITTER_PROTOCOL" value="0x01"/>
-      </subsystem>
+    <target name="ap" board="lisa_s_1.0">
+      <module name="radio_control" type="superbitrf_rc">
+	<!-- To store the binding parameters for the superbit radio in your
+             airframe file uncomment the following three lines and set the
+             correct values based on the output of the superbitrf telemetry
+             messages. -->
+        <!--define name="RADIO_TRANSMITTER_ID" value="1335259868"/--> <!-- Esden (1BitSquared) Dx6i: TX 1 -->
+        <!--define name="RADIO_TRANSMITTER_CHAN" value="6"/-->
+        <!--define name="RADIO_TRANSMITTER_PROTOCOL" value="0x01"/-->
+        <define name="USE_PERSISTENT_SETTINGS" value="TRUE"/>
+      </module>
 
       <configure name="AHRS_PROPAGATE_FREQUENCY" value="500"/>
-      <configure name="LISA_S_BARO" value="BARO_MS5611_SPI"/>
-        <define name="AUTOPILOT_DISABLE_AHRS_KILL"/>
     </target>
 
     <target name="nps" board="pc">
-      <subsystem name="fdm" type="jsbsim"/>
-      <subsystem name="radio_control" type="ppm"/>
+      <module name="fdm" type="jsbsim"/>
+      <module name="radio_control" type="ppm"/>
     </target>
 
-    <subsystem name="motor_mixing"/>
-    <subsystem name="actuators" type="pwm">
+    <module name="motor_mixing"/>
+    <module name="actuators" type="pwm">
       <define name="SERVO_HZ" value="400"/>
       <define name="USE_SERVOS_1AND2"/>
-    </subsystem>
+    </module>
 
-    <subsystem name="telemetry" type="superbitrf"/>
-    <subsystem name="imu" type="lisa_s_v0.1"/>
-    <subsystem name="gps" type="ublox"/>
-    <subsystem name="stabilization" type="int_quat"/>
-    <subsystem name="ahrs" type="int_cmpl_quat"/>
-    <subsystem name="ins"/>
+    <module name="telemetry" type="superbitrf"/>
+    <module name="imu" type="lisa_s_v1.0"/>
+    <module name="gps" type="ublox"/>
+    <module name="stabilization" type="int_quat"/>
+    <module name="ahrs" type="int_cmpl_quat"/>
+    <module name="ins"/>
   </firmware>
 </airframe>

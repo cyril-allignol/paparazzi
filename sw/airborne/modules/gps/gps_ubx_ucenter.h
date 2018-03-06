@@ -29,18 +29,19 @@
 #define GPS_UBX_UCENTER_H
 
 #include "std.h"
+#include "pprzlink/pprzlink_device.h"
 
 /** U-Center Variables */
-#define GPS_UBX_UCENTER_CONFIG_STEPS	  19
+#define GPS_UBX_UCENTER_CONFIG_STEPS    19
 
-struct gps_ubx_ucenter_struct
-{
+struct gps_ubx_ucenter_struct {
   uint8_t status;
   uint8_t reply;
   uint8_t cnt;
 
-  uint32_t baud_init; // Initial baudrate of the ublox module
-  uint32_t baud_run;  // Current baudrate of the ublox module
+  uint32_t baud_init;   // Initial baudrate of the ublox module
+  uint32_t baud_run;    // Current baudrate of the ublox module
+  uint32_t baud_target; // Final expected baudrate of the ublox module
 
   uint8_t sw_ver_h;
   uint8_t sw_ver_l;
@@ -52,6 +53,9 @@ struct gps_ubx_ucenter_struct
   uint8_t port_id;
 
   char replies[GPS_UBX_UCENTER_CONFIG_STEPS];
+
+  // Gps device
+  struct link_device *dev;
 };
 
 extern struct gps_ubx_ucenter_struct gps_ubx_ucenter;
@@ -59,6 +63,7 @@ extern struct gps_ubx_ucenter_struct gps_ubx_ucenter;
 extern void gps_ubx_ucenter_init(void);
 extern void gps_ubx_ucenter_periodic(void);
 extern void gps_ubx_ucenter_event(void);
+extern int gps_ubx_ucenter_get_status(void);
 
 #endif
 

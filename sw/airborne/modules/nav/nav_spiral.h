@@ -32,7 +32,7 @@
 #include "std.h"
 #include "math/pprz_algebra_float.h"
 
-enum SpiralStatus { Outside, StartCircle, Circle, IncSpiral };
+enum SpiralStatus { SpiralOutside, SpiralStartCircle, SpiralCircle, SpiralInc };
 
 struct NavSpiral {
   struct FloatVect3 trans_current;
@@ -51,8 +51,8 @@ struct NavSpiral {
 
 extern struct NavSpiral nav_spiral;
 
-extern bool_t nav_spiral_run(void);
-extern bool_t nav_spiral_setup(uint8_t center_wp, uint8_t edge_wp, float radius_start,
-                       float radius_inc, float segments);
+extern bool nav_spiral_run(void);
+extern void nav_spiral_setup(uint8_t center_wp, uint8_t edge_wp, float radius_start,
+                             float radius_inc, float segments);
 
 #endif // NAV_SPIRAL_H

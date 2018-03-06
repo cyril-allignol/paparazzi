@@ -24,8 +24,8 @@
 
 open Printf
 
-module Ground_Pprz = Pprz.Messages(struct let name = "ground" end)
-module Dl_Pprz = Pprz.Messages(struct let name = "datalink" end)
+module Ground_Pprz = PprzLink.Messages(struct let name = "ground" end)
+module Dl_Pprz = PprzLink.Messages(struct let name = "datalink" end)
 
 let ground_id = 0 (* cf tmtc/link.ml *)
 
@@ -44,12 +44,9 @@ module Make (A:Data.MISSION) (FM: FlightModel.SIG) = struct
   let nav_period = 1./.4. (* s *)
   let monitor_period = 1. (* s *)
   let rc_period = 1./.40. (* s *)
+  let sys_time_period = 1./.120. (* s *)
 
-  let msg = fun name ->
-    ExtXml.child Data.messages_ap ~select:(fun x -> ExtXml.attrib x "name" = name) "message"
-
-
-(* Commands handling (rcommands is the intermediate storage) *)
+  (* Commands handling (rcommands is the intermediate storage) *)
   let rc_channels = Array.of_list (Xml.children A.ac.Data.radio)
   let nb_channels = Array.length rc_channels
   let rc_channel_no = fun x ->
@@ -114,7 +111,8 @@ module Make (A:Data.MISSION) (FM: FlightModel.SIG) = struct
 	ignore (adj#connect#value_changed update);
 	update ())
       rc_channels;
-    ignore (on_off#connect#toggled (fun () -> sliders#coerce#misc#set_sensitive on_off#active));
+    (* github issue #821: people seems to want sliders always sensitive, even if RC is OFF *)
+    (* ignore (on_off#connect#toggled (fun () -> sliders#coerce#misc#set_sensitive on_off#active)); *)
 
     on_off#set_active false;
 
@@ -124,6 +122,7 @@ module Make (A:Data.MISSION) (FM: FlightModel.SIG) = struct
     Stdlib.timer rc_period send_ppm; (** FIXME: should use time_scale *)
     window#show ()
 
+  external sys_time_task : unit -> unit = "sim_sys_time_task"
   external periodic_task : unit -> unit = "sim_periodic_task"
   external nav_task : unit -> unit = "sim_nav_task"
   external monitor_task : unit -> unit = "sim_monitor_task"
@@ -179,11 +178,11 @@ module Make (A:Data.MISSION) (FM: FlightModel.SIG) = struct
     let set = fun () ->
       let msg_id, _ = Dl_Pprz.message_of_name name in
       let s = Dl_Pprz.payload_of_values msg_id ground_id vs in
-      set_message (Serial.string_of_payload s) in
-    let ac_id = Pprz.int_assoc "ac_id" vs in
-    match link_mode with
-      Pprz.Forwarded when ac_id = !my_id -> if dl_button#active then set ()
-    | Pprz.Broadcasted -> if dl_button#active then set ()
+      set_message (Protocol.string_of_payload s) in
+    let ac_id = try Some (PprzLink.int_assoc "ac_id" vs) with _ -> None in
+    match link_mode, ac_id with
+      PprzLink.Forwarded, Some x when x = !my_id -> if dl_button#active then set ()
+    | PprzLink.Broadcasted, _ -> if dl_button#active then set ()
     | _ -> ()
 
   let message_bind = fun name link_mode ->
@@ -194,12 +193,13 @@ module Make (A:Data.MISSION) (FM: FlightModel.SIG) = struct
     Stdlib.timer ~scale:time_scale periodic_period periodic_task;
     Stdlib.timer ~scale:time_scale nav_period nav_task;
     Stdlib.timer ~scale:time_scale monitor_period monitor_task;
+    Stdlib.timer ~scale:time_scale sys_time_period sys_time_task;
 
     (* Forward or broacast messages according to "link" mode *)
     Hashtbl.iter
       (fun _m_id msg ->
-	match msg.Pprz.link with
-	  Some x -> message_bind msg.Pprz.name x
+	match msg.PprzLink.link with
+	  Some x -> message_bind msg.PprzLink.name x
 	| _ -> ())
       Dl_Pprz.messages;;
 
